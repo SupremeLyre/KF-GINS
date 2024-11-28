@@ -1,0 +1,8 @@
+{
+    "cmake.debugConfig": {
+        "args": [
+            "dataset/example/kf-gins.yaml"
+        ],
+        "cwd": "${workspaceFolder}"
+    }
+}

@@ -302,17 +302,17 @@ def calcNavresultError(navresult_filepath, refresult_filepath):
 if __name__ == '__main__':
 
     # 导航结果和导航误差
-    navresult_filepath = '../dataset/KF_GINS_Navresult.nav'
-    refresult_filepath = '../dataset/truth.nav'
+    navresult_filepath = '../dataset/example/KF_GINS_Navresult.nav'
+    refresult_filepath = '../dataset/example/truth.nav'
     # 导航结果
     plotNavresult(navresult_filepath)
     # 计算并绘制导航误差
-    # plotNavError(navresult_filepath, refresult_filepath)
+    plotNavError(navresult_filepath, refresult_filepath)
 
     # 估计的IMU误差
-    imuerr_filepath = '../dataset/KF_GINS_IMU_ERR.txt'
-    # plotIMUerror(imuerr_filepath)
+    imuerr_filepath = '../dataset/example/KF_GINS_IMU_ERR.txt'
+    plotIMUerror(imuerr_filepath)
 
     # 估计的导航状态标准差和IMU误差标准差
-    std_filepath = '../dataset/KF_GINS_STD.txt'
-    # plotSTD(std_filepath)
+    std_filepath = '../dataset/example/KF_GINS_STD.txt'
+    plotSTD(std_filepath)

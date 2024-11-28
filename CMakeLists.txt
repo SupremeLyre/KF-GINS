@@ -25,11 +25,12 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 add_executable(${PROJECT_NAME} ${SOURCE})
 
 # Eigen3
-include_directories(ThirdParty/eigen-3.3.9)
+find_package(Eigen3 REQUIRED)
+include_directories(${EIGEN3_INCLUDE_DIR})
 
 # yaml-cpp-0.7.0
-add_subdirectory(ThirdParty/yaml-cpp-0.7.0)
-target_link_libraries(${PROJECT_NAME} yaml-cpp)
+find_package(yaml-cpp REQUIRED)
+target_link_libraries(${PROJECT_NAME} ${YAML_CPP_LIBRARIES})
 
 # abseil
 set(ABSL_PROPAGATE_CXX_STD true)
