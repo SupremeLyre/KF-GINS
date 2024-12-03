@@ -14,7 +14,7 @@ public:
         if (PPPFileLoader::load_()) {
             gnss_.week = temper.week;
             gnss_.time = temper.tow;
-            gnss_.blh << temper.blh[0] * D2R, temper.blh[1] * D2R, temper.blh[2];
+            gnss_.blh << temper.blh[0], temper.blh[1], temper.blh[2];
             gnss_.std << temper.std_xyz[0], temper.std_xyz[2], temper.std_xyz[1];
             gnss_.vel << temper.dpos[0], temper.dpos[1], temper.dpos[2];
             gnss_.vstd << temper.qdpos[0], temper.qdpos[2], temper.qdpos[1];
