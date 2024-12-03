@@ -57,7 +57,7 @@ def plotNavresult(navresult_filepath):
 
     # 绘图
     plt.figure('horizontal position')
-    plt.plot(pos[:, 2], pos[:, 1])
+    plt.plot(pos[:, 2], pos[:, 1], '.-')
     plt.axis('equal')
     plt.xlabel('East [m]')
     plt.ylabel('North [m]')
@@ -301,18 +301,19 @@ def calcNavresultError(navresult_filepath, refresult_filepath):
 
 if __name__ == '__main__':
 
+    path = './dataset/20230113'
     # 导航结果和导航误差
-    navresult_filepath = '../dataset/example/KF_GINS_Navresult.nav'
-    refresult_filepath = '../dataset/example/truth.nav'
+    navresult_filepath = path + '/KF_GINS_Navresult.nav'
+    # refresult_filepath =  path + './dataset/example/truth.nav'
     # 导航结果
     plotNavresult(navresult_filepath)
     # 计算并绘制导航误差
-    plotNavError(navresult_filepath, refresult_filepath)
+    # plotNavError(navresult_filepath, refresult_filepath)
 
     # 估计的IMU误差
-    imuerr_filepath = '../dataset/example/KF_GINS_IMU_ERR.txt'
+    imuerr_filepath = path + '/KF_GINS_IMU_ERR.txt'
     plotIMUerror(imuerr_filepath)
 
     # 估计的导航状态标准差和IMU误差标准差
-    std_filepath = '../dataset/example/KF_GINS_STD.txt'
+    std_filepath =  path + '/KF_GINS_STD.txt'
     plotSTD(std_filepath)
