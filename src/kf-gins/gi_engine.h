@@ -112,7 +112,9 @@ public:
     double timestamp() const {
         return timestamp_;
     }
-
+    int week() const {
+        return week_;
+    }
     /**
      * @brief 获取当前IMU状态
      *        get current navigation state
@@ -227,7 +229,7 @@ private:
 
 private:
     GINSOptions options_;
-
+    int week_;
     double timestamp_;
 
     // 更新时间对齐误差，IMU状态和观测信息误差小于它则认为两者对齐

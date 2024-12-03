@@ -36,6 +36,7 @@ public:
         dt_ = 1.0 / (double) rate;
 
         imu_.time = 0;
+        imu_.week = 0;
     }
 
     const IMU &next() {

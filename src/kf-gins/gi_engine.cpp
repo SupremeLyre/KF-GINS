@@ -30,6 +30,7 @@ GIEngine::GIEngine(GINSOptions &options) {
 
     this->options_ = options;
     options_.print_options();
+    week_      = 0;
     timestamp_ = 0;
 
     // 设置协方差矩阵，系统噪声阵和系统误差状态矩阵大小
@@ -93,6 +94,7 @@ void GIEngine::newImuProcess() {
 
     // 当前IMU时间作为系统当前状态时间,
     // set current IMU time as the current state time
+    week_      = imucur_.week;
     timestamp_ = imucur_.time;
 
     // 如果GNSS有效，则将更新时间设置为GNSS时间

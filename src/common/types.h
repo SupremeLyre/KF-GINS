@@ -30,15 +30,18 @@ using Eigen::Quaterniond;
 using Eigen::Vector3d;
 
 typedef struct GNSS {
+    double week;
     double time;
 
     Vector3d blh;
     Vector3d std;
-
+    Vector3d vel;
+    Vector3d vstd;
     bool isvalid;
 } GNSS;
 
 typedef struct IMU {
+    int week;
     double time;
     double dt;
 

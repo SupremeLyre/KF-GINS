@@ -40,7 +40,7 @@ const double WGS84_RB  = 6356752.3142451793;    /* 短半轴b */
 const double WGS84_GM0 = 398600441800000.00;    /* 地球引力常数 */
 const double WGS84_E1  = 0.0066943799901413156; /* 第一偏心率平方 */
 const double WGS84_E2  = 0.0067394967422764341; /* 第二偏心率平方 */
-
+const double g0        = 9.7803267715;
 class Earth {
 
 public:

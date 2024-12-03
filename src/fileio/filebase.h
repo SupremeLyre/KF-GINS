@@ -24,6 +24,7 @@
 #define FILEBASE_H
 
 #include <fstream>
+#include <sstream>
 #include <vector>
 
 using std::string;
@@ -56,7 +57,6 @@ public:
     std::fstream &fstream() {
         return filefp_;
     }
-
     int columns() const {
         return columns_;
     }

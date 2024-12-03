@@ -1,7 +1,7 @@
 {
     "cmake.debugConfig": {
         "args": [
-            "dataset/example/kf-gins.yaml"
+            "dataset/20230113/white_box.yaml"
         ],
         "cwd": "${workspaceFolder}"
     }

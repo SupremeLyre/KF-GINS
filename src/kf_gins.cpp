@@ -24,17 +24,20 @@
 #include <absl/time/clock.h>
 #include <iomanip>
 #include <iostream>
+#include <yaml-cpp/exceptions.h>
 #include <yaml-cpp/yaml.h>
 
 #include "common/angle.h"
+#include "fileio/adisfileloader.hpp"
 #include "fileio/filesaver.h"
 #include "fileio/gnssfileloader.h"
 #include "fileio/imufileloader.h"
 
+#include "fileio/pppfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 
 bool loadConfig(YAML::Node &config, GINSOptions &options);
-void writeNavResult(double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile);
+void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile);
 void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile);
 
 int main(int argc, char *argv[]) {
@@ -82,6 +85,12 @@ int main(int argc, char *argv[]) {
     // imudata configuration， data processing interval
     int imudatalen, imudatarate;
     double starttime, endtime;
+    int newtype = 0;
+    try {
+        newtype = config["newtype"].as<int>();
+    } catch (YAML::Exception &e) {
+        newtype = 0;
+    }
     try {
         imudatalen  = config["imudatalen"].as<int>();
         imudatarate = config["imudatarate"].as<int>();
@@ -92,16 +101,6 @@ int main(int argc, char *argv[]) {
                   << std::endl;
         return -1;
     }
-
-    // 加载GNSS文件和IMU文件
-    // load GNSS file and IMU file
-    GnssFileLoader gnssfile(gnsspath);
-    ImuFileLoader imufile(imupath, imudatalen, imudatarate);
-
-    // 构造GIEngine
-    // Construct GIEngine
-    GIEngine giengine(options);
-
     // 构造输出文件
     // construct output file
     // navfile: gnssweek(1) + time(1) + pos(3) + vel(3) + euler angle(3) = 11
@@ -112,98 +111,194 @@ int main(int argc, char *argv[]) {
     FileSaver imuerrfile(outputpath + "/KF_GINS_IMU_ERR.txt", imuerr_columns, FileSaver::TEXT);
     FileSaver stdfile(outputpath + "/KF_GINS_STD.txt", std_columns, FileSaver::TEXT);
 
-    // 检查文件是否正确打开
-    // check if these files are all opened
-    if (!gnssfile.isOpen() || !imufile.isOpen() || !navfile.isOpen() || !imuerrfile.isOpen() || !stdfile.isOpen()) {
-        std::cout << "Failed to open data file!" << std::endl;
-        return -1;
-    }
-
-    // 检查处理时间
-    // check process time
-    if (endtime < 0) {
-        endtime = imufile.endtime();
-    }
-    if (endtime > 604800 || starttime < imufile.starttime() || starttime > endtime) {
-        std::cout << "Process time ERROR!" << std::endl;
-        return -1;
-    }
-
-    // 数据对齐
-    // data alignment
-    IMU imu_cur;
-    do {
-        imu_cur = imufile.next();
-    } while (imu_cur.time < starttime);
-
-    GNSS gnss;
-    do {
-        gnss = gnssfile.next();
-    } while (gnss.time <= starttime);
-
-    // 添加IMU数据到GIEngine中，补偿IMU误差
-    // add imudata to GIEngine and compensate IMU error
-    giengine.addImuData(imu_cur, true);
-
-    // 添加GNSS数据到GIEngine
-    // add gnssdata to GIEngine
-    giengine.addGnssData(gnss);
-
     // 用于保存处理结果
     // used to save processing results
+    int week;
     double timestamp;
     NavState navstate;
     Eigen::MatrixXd cov;
-
     // 用于显示处理进程
     // used to display processing progress
     int percent = 0, lastpercent = 0;
-    double interval = endtime - starttime;
+    double interval = 0;
+    // 构造GIEngine
+    // Construct GIEngine
+    GIEngine giengine(options);
+    GNSS gnss;
+    IMU imu_cur;
+    if (newtype == 1) {
+        PPPFileLoader gnssfile(gnsspath);
+        AdisFileLoader imufile(imupath);
+        // 检查文件是否正确打开
+        // check if these files are all opened
+        if (!gnssfile.isOpen() || !imufile.isOpen() || !navfile.isOpen() || !imuerrfile.isOpen() || !stdfile.isOpen()) {
+            std::cout << "Failed to open data file!" << std::endl;
+            return -1;
+        }
 
-    while (true) {
-        // 当前IMU状态时间新于GNSS时间时，读取并添加新的GNSS数据到GIEngine
-        // load new gnssdata when current state time is newer than GNSS time and add it to GIEngine
-        if (gnss.time < imu_cur.time && !gnssfile.isEof()) {
+        // 检查处理时间
+        // check process time
+        if (endtime < 0) {
+            endtime = imufile.endtime();
+        }
+        if (endtime > 604800 || starttime < imufile.starttime() || starttime > endtime) {
+            std::cout << "Process time ERROR!" << std::endl;
+            return -1;
+        }
+
+        // 数据对齐
+        // data alignment
+        do {
+            imu_cur = imufile.next();
+        } while (imu_cur.time < starttime);
+
+        do {
             gnss = gnssfile.next();
-            giengine.addGnssData(gnss);
+        } while (gnss.time <= starttime);
+
+        // 添加IMU数据到GIEngine中，补偿IMU误差
+        // add imudata to GIEngine and compensate IMU error
+        giengine.addImuData(imu_cur, true);
+
+        // 添加GNSS数据到GIEngine
+        // add gnssdata to GIEngine
+        giengine.addGnssData(gnss);
+
+        while (true) {
+            // 当前IMU状态时间新于GNSS时间时，读取并添加新的GNSS数据到GIEngine
+            // load new gnssdata when current state time is newer than GNSS time and add it to GIEngine
+            if (gnss.time < imu_cur.time && !gnssfile.isEof()) {
+                gnss = gnssfile.next();
+                giengine.addGnssData(gnss);
+            }
+
+            // 读取并添加新的IMU数据到GIEngine
+            // load new imudata and add it to GIEngine
+            imu_cur = imufile.next();
+            if (imu_cur.time > endtime || imufile.isEof()) {
+                break;
+            }
+            giengine.addImuData(imu_cur);
+
+            // 处理新的IMU数据
+            // process new imudata
+            giengine.newImuProcess();
+
+            // 获取当前时间，IMU状态和协方差
+            // get current timestamp, navigation state and covariance
+            week      = giengine.week();
+            timestamp = giengine.timestamp();
+            navstate  = giengine.getNavState();
+            cov       = giengine.getCovariance();
+
+            // 保存处理结果
+            // save processing results
+            writeNavResult(0, timestamp, navstate, navfile, imuerrfile);
+            writeSTD(timestamp, cov, stdfile);
+
+            // 显示处理进展
+            // display processing progress
+            interval = endtime - starttime;
+
+            percent = int((imu_cur.time - starttime) / interval * 100);
+            if (percent - lastpercent >= 1) {
+                std::cout << " - Processing: " << std::setw(3) << percent << "%\r" << std::flush;
+                lastpercent = percent;
+            }
         }
 
-        // 读取并添加新的IMU数据到GIEngine
-        // load new imudata and add it to GIEngine
-        imu_cur = imufile.next();
-        if (imu_cur.time > endtime || imufile.isEof()) {
-            break;
+        // 关闭打开的文件
+        // close opened file
+        imufile.close();
+        gnssfile.close();
+    } else {
+        // 加载GNSS文件和IMU文件
+        // load GNSS file and IMU file
+        GnssFileLoader gnssfile(gnsspath);
+        ImuFileLoader imufile(imupath, imudatalen, imudatarate);
+        // 检查文件是否正确打开
+        // check if these files are all opened
+        if (!gnssfile.isOpen() || !imufile.isOpen() || !navfile.isOpen() || !imuerrfile.isOpen() || !stdfile.isOpen()) {
+            std::cout << "Failed to open data file!" << std::endl;
+            return -1;
         }
-        giengine.addImuData(imu_cur);
 
-        // 处理新的IMU数据
-        // process new imudata
-        giengine.newImuProcess();
-
-        // 获取当前时间，IMU状态和协方差
-        // get current timestamp, navigation state and covariance
-        timestamp = giengine.timestamp();
-        navstate  = giengine.getNavState();
-        cov       = giengine.getCovariance();
-
-        // 保存处理结果
-        // save processing results
-        writeNavResult(timestamp, navstate, navfile, imuerrfile);
-        writeSTD(timestamp, cov, stdfile);
-
-        // 显示处理进展
-        // display processing progress
-        percent = int((imu_cur.time - starttime) / interval * 100);
-        if (percent - lastpercent >= 1) {
-            std::cout << " - Processing: " << std::setw(3) << percent << "%\r" << std::flush;
-            lastpercent = percent;
+        // 检查处理时间
+        // check process time
+        if (endtime < 0) {
+            endtime = imufile.endtime();
         }
+        if (endtime > 604800 || starttime < imufile.starttime() || starttime > endtime) {
+            std::cout << "Process time ERROR!" << std::endl;
+            return -1;
+        }
+
+        // 数据对齐
+        // data alignment
+        do {
+            imu_cur = imufile.next();
+        } while (imu_cur.time < starttime);
+
+        do {
+            gnss = gnssfile.next();
+        } while (gnss.time <= starttime);
+
+        // 添加IMU数据到GIEngine中，补偿IMU误差
+        // add imudata to GIEngine and compensate IMU error
+        giengine.addImuData(imu_cur, true);
+
+        // 添加GNSS数据到GIEngine
+        // add gnssdata to GIEngine
+        giengine.addGnssData(gnss);
+
+        while (true) {
+            // 当前IMU状态时间新于GNSS时间时，读取并添加新的GNSS数据到GIEngine
+            // load new gnssdata when current state time is newer than GNSS time and add it to GIEngine
+            if (gnss.time < imu_cur.time && !gnssfile.isEof()) {
+                gnss = gnssfile.next();
+                giengine.addGnssData(gnss);
+            }
+
+            // 读取并添加新的IMU数据到GIEngine
+            // load new imudata and add it to GIEngine
+            imu_cur = imufile.next();
+            if (imu_cur.time > endtime || imufile.isEof()) {
+                break;
+            }
+            giengine.addImuData(imu_cur);
+
+            // 处理新的IMU数据
+            // process new imudata
+            giengine.newImuProcess();
+
+            // 获取当前时间，IMU状态和协方差
+            // get current timestamp, navigation state and covariance
+            timestamp = giengine.timestamp();
+            navstate  = giengine.getNavState();
+            cov       = giengine.getCovariance();
+
+            // 保存处理结果
+            // save processing results
+            writeNavResult(0, timestamp, navstate, navfile, imuerrfile);
+            writeSTD(timestamp, cov, stdfile);
+
+            // 显示处理进展
+            // display processing progress
+            interval = endtime - starttime;
+
+            percent = int((imu_cur.time - starttime) / interval * 100);
+            if (percent - lastpercent >= 1) {
+                std::cout << " - Processing: " << std::setw(3) << percent << "%\r" << std::flush;
+                lastpercent = percent;
+            }
+        }
+
+        // 关闭打开的文件
+        // close opened file
+        imufile.close();
+        gnssfile.close();
     }
 
-    // 关闭打开的文件
-    // close opened file
-    imufile.close();
-    gnssfile.close();
     navfile.close();
     imuerrfile.close();
     stdfile.close();
@@ -364,14 +459,14 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
  * @brief 保存导航结果和IMU误差，已转换为常用单位
  *        save navigation result and imu error, converted them to common units
  * */
-void writeNavResult(double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile) {
+void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile) {
 
     std::vector<double> result;
 
     // 保存导航结果
     // save navigation result
     result.clear();
-    result.push_back(0);
+    result.push_back(week);
     result.push_back(time);
     result.push_back(navstate.pos[0] * R2D);
     result.push_back(navstate.pos[1] * R2D);
