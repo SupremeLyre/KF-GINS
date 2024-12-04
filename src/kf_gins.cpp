@@ -33,6 +33,7 @@
 #include "fileio/gnssfileloader.h"
 #include "fileio/imufileloader.h"
 
+#include "fileio/posfileloader.hpp"
 #include "fileio/pppfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 #include "kf-gins/kf_gins_types.h"
@@ -41,9 +42,10 @@ bool loadConfig(YAML::Node &config, GINSOptions &options);
 void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile);
 void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile);
 template <typename ImuLoader, typename GnssLoader>
-int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double &starttime, double &endtime, GNSS &gnss,
-            IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week, double &timestamp,
-            NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent, int &lastpercent);
+int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double &starttime, double &endtime,
+            GNSS &gnss, IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week,
+            double &timestamp, NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent,
+            int &lastpercent);
 
 int main(int argc, char *argv[]) {
 
@@ -133,6 +135,14 @@ int main(int argc, char *argv[]) {
     IMU imu_cur;
     if (newtype == 1) {
         PPPFileLoader gnssfile(gnsspath);
+        AdisFileLoader imufile(imupath);
+        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                    timestamp, navstate, cov, interval, percent, lastpercent)) {
+            return -1;
+        }
+    } else if (newtype == 2) {
+        PosFileLoader gnssfile(gnsspath);
+        gnssfile.next();
         AdisFileLoader imufile(imupath);
         if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
@@ -382,9 +392,10 @@ void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile) {
     stdfile.dump(result);
 }
 template <typename ImuLoader, typename GnssLoader>
-int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double &starttime, double &endtime, GNSS &gnss,
-            IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week, double &timestamp,
-            NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent, int &lastpercent) {
+int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double &starttime, double &endtime,
+            GNSS &gnss, IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week,
+            double &timestamp, NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent,
+            int &lastpercent) {
     // 检查文件是否正确打开
     // check if these files are all opened
     if (!gnssfile.isOpen() || !imufile.isOpen() || !navfile.isOpen() || !imuerrfile.isOpen() || !stdfile.isOpen()) {

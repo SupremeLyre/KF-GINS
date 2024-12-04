@@ -312,8 +312,8 @@ if __name__ == '__main__':
 
     # 估计的IMU误差
     imuerr_filepath = path + '/KF_GINS_IMU_ERR.txt'
-    # plotIMUerror(imuerr_filepath)
+    plotIMUerror(imuerr_filepath)
 
     # 估计的导航状态标准差和IMU误差标准差
     std_filepath =  path + '/KF_GINS_STD.txt'
-    # plotSTD(std_filepath)
+    plotSTD(std_filepath)
