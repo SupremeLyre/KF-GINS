@@ -226,7 +226,7 @@ private:
             }
         }
     }
-
+    void nhc(PVA pvacur_);
 private:
     GINSOptions options_;
     int week_;

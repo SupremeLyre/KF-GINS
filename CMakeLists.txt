@@ -36,6 +36,9 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 find_package(yaml-cpp REQUIRED)
 target_link_libraries(${PROJECT_NAME} ${YAML_CPP_LIBRARIES})
 
+find_package(glog REQUIRED)
+target_link_libraries(${PROJECT_NAME} glog::glog)
+
 # abseil
 set(ABSL_PROPAGATE_CXX_STD true)
 add_subdirectory(ThirdParty/abseil-cpp-20220623.1)

@@ -20,7 +20,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "common/angle.h"
 #include "common/earth.h"
+#include "common/logging.h"
 #include "common/rotation.h"
 
 #include "gi_engine.h"
@@ -109,18 +111,20 @@ void GIEngine::newImuProcess() {
         // 只传播导航状态
         // only propagate navigation state
         insPropagation(imupre_, imucur_);
+        nhc(pvacur_);
     } else if (res == 1) {
         // GNSS数据靠近上一历元，先对上一历元进行GNSS更新
         // gnssdata is near to the previous imudata, we should firstly do gnss update
         gnssUpdate(gnssdata_);
+        nhc(pvacur_);
         stateFeedback();
-
         pvapre_ = pvacur_;
         insPropagation(imupre_, imucur_);
     } else if (res == 2) {
         // GNSS数据靠近当前历元，先对当前IMU进行状态传播
         // gnssdata is near current imudata, we should firstly propagate navigation state
         insPropagation(imupre_, imucur_);
+        nhc(pvacur_);
         gnssUpdate(gnssdata_);
         stateFeedback();
     } else {
@@ -132,7 +136,7 @@ void GIEngine::newImuProcess() {
         // 对前一半IMU进行状态传播
         // propagate navigation state for the first half imudata
         insPropagation(imupre_, midimu);
-
+        nhc(pvacur_);
         // 整秒时刻进行GNSS更新，并反馈系统状态
         // do GNSS position update at the whole second and feedback system states
         gnssUpdate(gnssdata_);
@@ -447,4 +451,38 @@ NavState GIEngine::getNavState() {
     state.imuerror = imuerror_;
 
     return state;
+}
+void GIEngine::nhc(PVA pvacur_) {
+    // 理论上载体系下只有前向速度，没有右向和下向速度。
+    Eigen::Matrix3d Cnb = pvacur_.att.cbn.transpose();
+    Eigen::Vector3d T1, T2, T3, vb;
+    T1 = Cnb.row(0);
+    T2 = Cnb.row(1);
+    T3 = Cnb.row(2);
+    vb = Cnb * pvacur_.vel;
+    // Logging::printMatrix(vb);
+    // 设计矩阵
+    Eigen::MatrixXd H;
+    // 新息向量
+    Eigen::MatrixXd dz;
+    // 观测噪声
+    Eigen::MatrixXd R;
+    H.resize(2, Cov_.rows());
+    H.setZero();
+    if (vb[1] < 0.5)
+        H.block(0, V_ID, 1, 3) = T2.transpose();
+    if (imucur_.dtheta.norm() < 30 * D2R / 100)
+        H.block(0, PHI_ID, 1, 3) = T2.transpose() * Rotation::skewSymmetric(pvacur_.vel);
+    if (vb[2] < 0.5)
+        H.block(1, V_ID, 1, 3) = T3.transpose();
+    if (imucur_.dtheta.norm() < 30 * D2R / 100)
+        H.block(1, PHI_ID, 1, 3) = T3.transpose() * Rotation::skewSymmetric(pvacur_.vel);
+    dz.resize(2, 1);
+    dz(0) = 0 - (T2.transpose() * pvacur_.vel);
+    dz(1) = 0 - (T3.transpose() * pvacur_.vel);
+    R.resize(2, 2);
+    R.setZero();
+    R(0, 0) = 4;
+    R(1, 1) = 4;
+    EKFUpdate(dz, H, R);
 }

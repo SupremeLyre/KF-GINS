@@ -51,7 +51,7 @@ using std::string;
 class Logging {
 
 public:
-    static void initialization(char **argv, bool logtostderr = true, bool logtofile = false) {
+    static void initialization(char **argv, bool logtostderr = true, bool logtofile = true) {
         if (logtostderr & logtofile) {
             FLAGS_alsologtostderr = true;
         } else if (logtostderr) {

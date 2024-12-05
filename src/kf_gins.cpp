@@ -33,6 +33,7 @@
 #include "fileio/gnssfileloader.h"
 #include "fileio/imufileloader.h"
 
+#include "common/logging.h"
 #include "fileio/posfileloader.hpp"
 #include "fileio/pppfileloader.hpp"
 #include "kf-gins/gi_engine.h"
@@ -48,6 +49,7 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
             int &lastpercent);
 
 int main(int argc, char *argv[]) {
+    Logging::initialization(argv);
 
     if (argc != 2) {
         std::cout << "usage: KF-GINS kf-gins.yaml" << std::endl;
