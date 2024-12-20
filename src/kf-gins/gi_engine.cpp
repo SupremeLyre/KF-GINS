@@ -19,11 +19,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 #include "common/angle.h"
 #include "common/earth.h"
 #include "common/logging.h"
 #include "common/rotation.h"
+#include <Eigen/Eigen>
 
 #include "gi_engine.h"
 #include "insmech.h"
@@ -112,19 +112,22 @@ void GIEngine::newImuProcess() {
         // only propagate navigation state
         insPropagation(imupre_, imucur_);
         nhc(pvacur_);
+        stateFeedback();
     } else if (res == 1) {
         // GNSS数据靠近上一历元，先对上一历元进行GNSS更新
         // gnssdata is near to the previous imudata, we should firstly do gnss update
         gnssUpdate(gnssdata_);
-        nhc(pvacur_);
         stateFeedback();
         pvapre_ = pvacur_;
         insPropagation(imupre_, imucur_);
+        nhc(pvacur_);
+        stateFeedback();
     } else if (res == 2) {
         // GNSS数据靠近当前历元，先对当前IMU进行状态传播
         // gnssdata is near current imudata, we should firstly propagate navigation state
         insPropagation(imupre_, imucur_);
         nhc(pvacur_);
+        stateFeedback();
         gnssUpdate(gnssdata_);
         stateFeedback();
     } else {
@@ -137,6 +140,7 @@ void GIEngine::newImuProcess() {
         // propagate navigation state for the first half imudata
         insPropagation(imupre_, midimu);
         nhc(pvacur_);
+        stateFeedback();
         // 整秒时刻进行GNSS更新，并反馈系统状态
         // do GNSS position update at the whole second and feedback system states
         gnssUpdate(gnssdata_);
@@ -146,6 +150,8 @@ void GIEngine::newImuProcess() {
         // propagate navigation state for the second half imudata
         pvapre_ = pvacur_;
         insPropagation(midimu, imucur_);
+        nhc(pvacur_);
+        stateFeedback();
     }
 
     // 检查协方差矩阵对角线元素
@@ -337,6 +343,28 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // do EKF update to update covariance and error state
     EKFUpdate(dz, H_gnsspos, R_gnsspos);
 
+    // GNSS速度观测矩阵
+    Eigen::MatrixXd H_gnssvel;
+    H_gnssvel.resize(3, Cov_.rows());
+    H_gnssvel.setZero();
+    H_gnssvel.block(0, V_ID, 3, 3) = Eigen::Matrix3d::Identity();
+    H_gnssvel.block(0, PHI_ID, 3, 3) =
+        -(Rotation::skewSymmetric(
+              Earth::iewn(pvacur_.pos[0]) +
+              Earth::enwn(Earth::meridianPrimeVerticalRadius(pvacur_.pos[0]), pvacur_.pos, pvacur_.vel)) *
+              Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
+          Rotation::skewSymmetric(pvacur_.att.cbn *
+                                  (Rotation::skewSymmetric(options_.antlever) * imucur_.dtheta / imucur_.dt)));
+    H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
+    H_gnssvel.block(0, SG_ID, 3, 3) =
+        -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * imucur_.dtheta.asDiagonal() / imucur_.dt;
+    // GNSS速度观测噪声矩阵
+    Eigen::MatrixXd R_gnssvel;
+    R_gnssvel = gnssdata.vstd.cwiseProduct(gnssdata.vstd).asDiagonal();
+    // GNSS速度量测新息
+    Eigen::MatrixXd dz_vel;
+    dz_vel = pvacur_.vel - Earth::cne(gnssdata.blh).transpose() * gnssdata.vel;
+    EKFUpdate(dz_vel, H_gnssvel, R_gnssvel);
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
     gnssdata.isvalid = false;
@@ -482,7 +510,7 @@ void GIEngine::nhc(PVA pvacur_) {
     dz(1) = 0 - (T3.transpose() * pvacur_.vel);
     R.resize(2, 2);
     R.setZero();
-    R(0, 0) = 4;
-    R(1, 1) = 4;
+    R(0, 0) = 25;
+    R(1, 1) = 25;
     EKFUpdate(dz, H, R);
 }

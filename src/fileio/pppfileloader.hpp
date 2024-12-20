@@ -15,9 +15,9 @@ public:
             gnss_.week = temper.week;
             gnss_.time = temper.tow;
             gnss_.blh << temper.blh[0], temper.blh[1], temper.blh[2];
-            gnss_.std << temper.std_xyz[0], temper.std_xyz[2], temper.std_xyz[1];
-            gnss_.vel << temper.dpos[0], temper.dpos[1], temper.dpos[2];
-            gnss_.vstd << temper.qdpos[0], temper.qdpos[2], temper.qdpos[1];
+            gnss_.std << temper.std_ned[0], temper.std_ned[1], temper.std_ned[2];
+            gnss_.vel << temper.vned[0], temper.vned[1], temper.vned[2];
+            gnss_.vstd << temper.std_vned[0], temper.std_vned[1], temper.std_vned[2];
         }
         return gnss_;
     }
@@ -42,6 +42,9 @@ private:
         int stat_dpos;
         double dpos[3];
         double qdpos[3];
+        double std_ned[3];
+        double std_vned[3];
+        double vned[3];
         string time_acc;
     } temper;
     bool load_();

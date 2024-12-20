@@ -144,7 +144,6 @@ int main(int argc, char *argv[]) {
         }
     } else if (newtype == 2) {
         PosFileLoader gnssfile(gnsspath);
-        gnssfile.next();
         AdisFileLoader imufile(imupath);
         if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {

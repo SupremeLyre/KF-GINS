@@ -301,8 +301,8 @@ def calcNavresultError(navresult_filepath, refresult_filepath):
 
 if __name__ == '__main__':
 
-    # path = './dataset/20230113/pppimu'
-    path = './dataset/20241101/posimu'
+    path = './dataset/20230113/pppimu'
+    # path = './dataset/20241101/posimu'
     # 导航结果和导航误差
     navresult_filepath = path + '/KF_GINS_Navresult.nav'
     # refresult_filepath =  path + './dataset/example/truth.nav'

@@ -31,5 +31,8 @@ private:
         double dpos[3];
         double qdpos[3];
         double cov_dpos[3];
+        double std_ned[3];
+        double std_vned[3];
+        double vned[3];
     } temper;
 };

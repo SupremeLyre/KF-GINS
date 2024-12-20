@@ -21,10 +21,22 @@ bool PosFileLoader::load_() {
     Eigen::Vector3d xyz, blh;
     xyz << temper.xyz[0], temper.xyz[1], temper.xyz[2];
     blh = Earth::ecef2blh(xyz);
-
-    temper.blh[0] = blh[0];
-    temper.blh[1] = blh[1];
-    temper.blh[2] = blh[2];
+    Eigen::Matrix3d Conv_, Conv_v;
+    Conv_ << temper.std_xyz[0], temper.cov_xyz[0], temper.cov_xyz[2], temper.cov_xyz[0], temper.std_xyz[1],
+        temper.cov_xyz[1], temper.cov_xyz[2], temper.cov_xyz[1], temper.std_xyz[2];
+    Conv_v << temper.std_vxyz[0], temper.cov_vxyz[0], temper.cov_vxyz[2], temper.cov_dpos[0], temper.cov_vxyz[1],
+        temper.cov_vxyz[1], temper.cov_vxyz[2], temper.cov_vxyz[1], temper.std_vxyz[2];
+    Eigen::Vector3d stdned  = (Earth::cne(blh).transpose() * Conv_ * Earth::cne(blh)).diagonal();
+    Eigen::Vector3d vstdned = (Earth::cne(blh).transpose() * Conv_v * Earth::cne(blh)).diagonal();
+    Eigen::Vector3d vned;
+    vned << temper.dpos[0], temper.dpos[1], temper.dpos[2];
+    vned = Earth::cne(blh).transpose() * vned;
+    for (int i = 0; i < 3; i++) {
+        temper.blh[i]      = blh[i];
+        temper.std_ned[i]  = stdned[i];
+        temper.std_vned[i] = vstdned[i];
+        temper.vned[i]     = vned[i];
+    }
     return true;
 }
 const GNSS &PosFileLoader::next() {
@@ -32,9 +44,9 @@ const GNSS &PosFileLoader::next() {
         gnss_.week = temper.week;
         gnss_.time = temper.tow;
         gnss_.blh << temper.blh[0], temper.blh[1], temper.blh[2];
-        gnss_.std << temper.std_xyz[0], temper.std_xyz[2], temper.std_xyz[1];
-        gnss_.vel << temper.dpos[0], temper.dpos[1], temper.dpos[2];
-        gnss_.vstd << temper.qdpos[0], temper.qdpos[2], temper.qdpos[1];
+        gnss_.std << temper.std_ned[0], temper.std_ned[1], temper.std_ned[2];
+        gnss_.vel << temper.vned[0], temper.vned[1], temper.vned[2];
+        gnss_.vstd << temper.std_vned[0], temper.std_vned[1], temper.std_vned[2];
     }
     return gnss_;
 }
