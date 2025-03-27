@@ -497,14 +497,25 @@ void GIEngine::nhc(PVA pvacur_) {
     Eigen::MatrixXd R;
     H.resize(2, Cov_.rows());
     H.setZero();
-    if (vb[1] < 0.5)
+    int nv = 0;
+    if (vb[1] < 0.5) {
         H.block(0, V_ID, 1, 3) = T2.transpose();
-    if (imucur_.dtheta.norm() < 30 * D2R / 100)
+        nv++;
+    }
+    if (imucur_.dtheta.norm() < 30 * D2R / 100) {
         H.block(0, PHI_ID, 1, 3) = T2.transpose() * Rotation::skewSymmetric(pvacur_.vel);
-    if (vb[2] < 0.5)
+        nv++;
+    }
+    if (vb[2] < 0.5) {
         H.block(1, V_ID, 1, 3) = T3.transpose();
-    if (imucur_.dtheta.norm() < 30 * D2R / 100)
+        nv++;
+    }
+    if (imucur_.dtheta.norm() < 30 * D2R / 100) {
         H.block(1, PHI_ID, 1, 3) = T3.transpose() * Rotation::skewSymmetric(pvacur_.vel);
+        nv++;
+    }
+    if (nv < 4)
+        return;
     dz.resize(2, 1);
     dz(0) = 0 - (T2.transpose() * pvacur_.vel);
     dz(1) = 0 - (T3.transpose() * pvacur_.vel);
