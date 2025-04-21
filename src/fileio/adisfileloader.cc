@@ -16,13 +16,14 @@ const IMU &AdisFileLoader::next() {
         imu_.week = temper.week;
         imu_.time = temper.tow;
         double dt = imu_.time - imu_pre_.time;
-        if (dt < 0.1) {
+        if (dt > 0.003) {
             imu_.dt = dt;
         } else {
             imu_.dt = dt_;
         }
-        imu_.dtheta << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
-        imu_.dvel << temper.acc[1], temper.acc[0], -temper.acc[2];
+        imu_.dtheta << temper.gyr[1] * D2R * imu_.dt, temper.gyr[0] * D2R * imu_.dt, -temper.gyr[2] * D2R * imu_.dt;
+        imu_.dvel << temper.acc[1] * imu_.dt * 9.80665, temper.acc[0] * imu_.dt * 9.80665,
+            -temper.acc[2] * imu_.dt * 9.80665;
     }
     return imu_;
 }
@@ -32,7 +33,7 @@ bool AdisFileLoader::load_() {
     string line;
     std::getline(filefp_, line);
     sscanf(line.c_str(), "%c,%lf,%d,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%d", &temper.type, &temper.tow, &temper.week,
-           &temper.leap, &temper.temprature, &temper.gyr[0], &temper.gyr[1], &temper.gyr[2], &temper.acc[0],
-           &temper.acc[1], &temper.acc[2], &temper.stamp, &temper.cap);
+           &temper.leap, &temper.temprature, &temper.acc[0], &temper.acc[1], &temper.acc[2], &temper.gyr[0],
+           &temper.gyr[1], &temper.gyr[2], &temper.stamp, &temper.cap);
     return true;
 }

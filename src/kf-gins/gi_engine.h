@@ -128,7 +128,7 @@ public:
     Eigen::MatrixXd getCovariance() {
         return Cov_;
     }
-
+    int nhc(PVA pvacur_);
 private:
     /**
      * @brief 初始化系统状态和协方差
@@ -138,6 +138,11 @@ private:
      * @param [in] initstate_std 初始状态标准差
      *                           initial state std
      * */
+     enum class KFFilterType{
+        EKF,
+        Huber,
+        IGG3
+     };
     void initialize(const NavState &initstate, const NavState &initstate_std);
 
     /**
@@ -205,7 +210,7 @@ private:
      * @param [in] R  观测噪声阵
      *                measurement noise matrix
      * */
-    void EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R);
+    void EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType filter_type);
 
     /**
      * @brief 反馈误差状态到当前状态
@@ -226,7 +231,7 @@ private:
             }
         }
     }
-    void nhc(PVA pvacur_);
+    
 private:
     GINSOptions options_;
     int week_;

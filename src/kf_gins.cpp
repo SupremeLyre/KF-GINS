@@ -20,18 +20,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <Eigen/Dense>
-#include <absl/time/clock.h>
-#include <iomanip>
-#include <iostream>
-#include <yaml-cpp/exceptions.h>
-#include <yaml-cpp/yaml.h>
-
 #include "common/angle.h"
 #include "fileio/adisfileloader.hpp"
 #include "fileio/filesaver.h"
 #include "fileio/gnssfileloader.h"
 #include "fileio/imufileloader.h"
+#include <Eigen/Dense>
+#include <absl/time/clock.h>
+#include <format>
+#include <iostream>
+#include <yaml-cpp/exceptions.h>
+#include <yaml-cpp/yaml.h>
 
 #include "common/logging.h"
 #include "fileio/posfileloader.hpp"
@@ -116,7 +115,7 @@ int main(int argc, char *argv[]) {
     // imuerrfile: time(1) + gyrbias(3) + accbias(3) + gyrscale(3) + accscale(3) = 13
     // stdfile: time(1) + pva_std(9) + imubias_std(6) + imuscale_std(6) = 22
     int nav_columns = 11, imuerr_columns = 13, std_columns = 22;
-    FileSaver navfile(outputpath + "/KF_GINS_Navresult.nav", nav_columns, FileSaver::TEXT);
+    FileSaver navfile(outputpath + "/KF_GINS_Navresult.pos", nav_columns, FileSaver::TEXT);
     FileSaver imuerrfile(outputpath + "/KF_GINS_IMU_ERR.txt", imuerr_columns, FileSaver::TEXT);
     FileSaver stdfile(outputpath + "/KF_GINS_STD.txt", std_columns, FileSaver::TEXT);
 
@@ -320,12 +319,13 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
  * @brief 保存导航结果和IMU误差，已转换为常用单位
  *        save navigation result and imu error, converted them to common units
  * */
-void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile) {
+void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile,Eigen::MatrixXd &cov) {
 
     std::vector<double> result;
 
     // 保存导航结果
     // save navigation result
+    #if 0
     result.clear();
     result.push_back(week);
     result.push_back(time);
@@ -339,6 +339,15 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
     result.push_back(navstate.euler[1] * R2D);
     result.push_back(navstate.euler[2] * R2D);
     navfile.dump(result);
+    #endif
+    navfile.fstream() << std::format("{:4} {:10.4f} {:14.9f} {:14.9f} {:10.4f} {:3d} {:3d} {:8.4f} {:8.4f} {:8.4f} "
+        "{:8.4f} {:8.4f} {:8.4f} {:6.2f} {:6.1f} {:10.5f} {:10.5f} {:10.5f} {:9.5f} "
+        "{:8.5f} {:8.5f} {:8.5f} {:8.5f} {:8.5f} {:13.9f} {:13.9f} {:13.9f}\n",
+        week, time, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2],
+        1, 0, sqrt(cov(0, 0)), sqrt(cov(1, 1)), sqrt(cov(2, 2)), 0.0, 0.0, 0.0, 0.0,
+        0.0, navstate.vel[1], navstate.vel[0], -navstate.vel[2], sqrt(cov(3, 3)),
+        sqrt(cov(4, 4)), sqrt(cov(5, 5)), 0.0, 0.0, 0.0, navstate.euler[0] * R2D,
+        navstate.euler[1] * R2D, navstate.euler[2] * R2D);
 
     // 保存IMU误差
     // save IMU error
@@ -403,7 +412,9 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
         std::cout << "Failed to open data file!" << std::endl;
         return -1;
     }
-
+    navfile.fstream() << "%  GPST          latitude(deg) longitude(deg)  height(m)   Q  ns   sdn(m)   sde(m)   sdu(m)  "
+                         "sdne(m)  sdeu(m)  sdun(m) age(s)  ratio    vx(m/s)    vy(m/s)    vz(m/s)      sdvx   "
+                         "  sdvy     sdvz    sdvxy    sdvyz    sdvzx \n";
     // 检查处理时间
     // check process time
     if (endtime < 0) {
@@ -461,16 +472,18 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
 
         // 保存处理结果
         // save processing results
-        writeNavResult(week, timestamp, navstate, navfile, imuerrfile);
-        writeSTD(timestamp, cov, stdfile);
-
+        writeNavResult(week, timestamp, navstate, navfile, imuerrfile,cov);
+        // writeSTD(timestamp, cov, stdfile);
+        
         // 显示处理进展
         // display processing progress
         interval = endtime - starttime;
 
         percent = int((imu_cur.time - starttime) / interval * 100);
         if (percent - lastpercent >= 1) {
-            std::cout << " - Processing: " << std::setw(3) << percent << "%\r" << std::flush;
+            std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
+                                     percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2])
+                      << std::flush;
             lastpercent = percent;
         }
     }

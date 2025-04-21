@@ -2,7 +2,8 @@
     "cmake.debugConfig": {
         "args": [
             // "dataset/20241101/white_box.yaml",
-            "dataset/20250103/white_box.yaml",
+            // "dataset/20250103/white_box.yaml",
+            "dataset/20250318/white_box.yaml",
             // "dataset/example/kf-gins.yaml",
         ],
         "cwd": "${workspaceFolder}"

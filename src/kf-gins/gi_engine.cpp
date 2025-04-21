@@ -111,8 +111,6 @@ void GIEngine::newImuProcess() {
         // 只传播导航状态
         // only propagate navigation state
         insPropagation(imupre_, imucur_);
-        nhc(pvacur_);
-        stateFeedback();
     } else if (res == 1) {
         // GNSS数据靠近上一历元，先对上一历元进行GNSS更新
         // gnssdata is near to the previous imudata, we should firstly do gnss update
@@ -120,14 +118,10 @@ void GIEngine::newImuProcess() {
         stateFeedback();
         pvapre_ = pvacur_;
         insPropagation(imupre_, imucur_);
-        nhc(pvacur_);
-        stateFeedback();
     } else if (res == 2) {
         // GNSS数据靠近当前历元，先对当前IMU进行状态传播
         // gnssdata is near current imudata, we should firstly propagate navigation state
         insPropagation(imupre_, imucur_);
-        nhc(pvacur_);
-        stateFeedback();
         gnssUpdate(gnssdata_);
         stateFeedback();
     } else {
@@ -139,8 +133,6 @@ void GIEngine::newImuProcess() {
         // 对前一半IMU进行状态传播
         // propagate navigation state for the first half imudata
         insPropagation(imupre_, midimu);
-        nhc(pvacur_);
-        stateFeedback();
         // 整秒时刻进行GNSS更新，并反馈系统状态
         // do GNSS position update at the whole second and feedback system states
         gnssUpdate(gnssdata_);
@@ -150,10 +142,12 @@ void GIEngine::newImuProcess() {
         // propagate navigation state for the second half imudata
         pvapre_ = pvacur_;
         insPropagation(midimu, imucur_);
-        nhc(pvacur_);
-        stateFeedback();
     }
-
+    // 使用NHC添加约束
+    // add constraint using NHC
+#if 1
+    int nv = nhc(pvacur_);
+#endif
     // 检查协方差矩阵对角线元素
     // check diagonal elements of current covariance matrix
     checkCov();
@@ -341,7 +335,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
 
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
-    EKFUpdate(dz, H_gnsspos, R_gnsspos);
+    EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
 
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -402,16 +396,40 @@ void GIEngine::EKFPredict(Eigen::MatrixXd &Phi, Eigen::MatrixXd &Qd) {
     dx_  = Phi * dx_;
 }
 
-void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R) {
+void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType type) {
 
     assert(H.cols() == Cov_.rows());
     assert(dz.rows() == H.rows());
     assert(dz.rows() == R.rows());
     assert(dz.cols() == 1);
+    // 抗差处理：计算标准化残差并调整观测值噪声矩阵
+    Eigen::MatrixXd adj_R = R;
+    switch (type) {
+        case KFFilterType::Huber: {
+            double k0 = 2.0;
 
+            Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
+            for (int i = 0; i < dz.rows(); i++) {
+                double sigma = sqrt((HPHt + R)(i, i));
+                if (sigma < 1e-12)
+                    continue;
+                double v_normalized = dz(i, 0) / sigma;
+                if (fabs(v_normalized) > k0) {
+                    adj_R(i, i) *= fabs(v_normalized / k0); // 调整等价权
+                }
+            }
+            break;
+        }
+        case KFFilterType::EKF: {
+            break;
+        }
+        case KFFilterType::IGG3: {
+            break;
+        }
+    }
     // 计算Kalman增益
     // Compute Kalman Gain
-    auto temp         = H * Cov_ * H.transpose() + R;
+    auto temp         = H * Cov_ * H.transpose() + adj_R;
     Eigen::MatrixXd K = Cov_ * H.transpose() * temp.inverse();
 
     // 更新系统误差状态和协方差
@@ -480,14 +498,19 @@ NavState GIEngine::getNavState() {
 
     return state;
 }
-void GIEngine::nhc(PVA pvacur_) {
+int GIEngine::nhc(PVA pvacur_) {
     // 理论上载体系下只有前向速度，没有右向和下向速度。
     Eigen::Matrix3d Cnb = pvacur_.att.cbn.transpose();
     Eigen::Vector3d T1, T2, T3, vb;
-    T1 = Cnb.row(0);
-    T2 = Cnb.row(1);
-    T3 = Cnb.row(2);
-    vb = Cnb * pvacur_.vel;
+    vb         = Cnb * pvacur_.vel;
+    Matrix3d T = -Cnb * Rotation::skewSymmetric(pvacur_.vel);
+    Eigen::Vector3d C1, C2, C3;
+    C1 = Cnb.row(0);
+    C2 = Cnb.row(1);
+    C3 = Cnb.row(2);
+    T1 = T.row(0);
+    T2 = T.row(1);
+    T3 = T.row(2);
     // Logging::printMatrix(vb);
     // 设计矩阵
     Eigen::MatrixXd H;
@@ -495,33 +518,35 @@ void GIEngine::nhc(PVA pvacur_) {
     Eigen::MatrixXd dz;
     // 观测噪声
     Eigen::MatrixXd R;
+    dz.resize(2, 1);
+    R.resize(2, 2);
+    R.setZero();
     H.resize(2, Cov_.rows());
     H.setZero();
     int nv = 0;
-    if (vb[1] < 0.5) {
-        H.block(0, V_ID, 1, 3) = T2.transpose();
+    for (int i = 1; i < 3; i++) {
+        if (fabs(vb[i]) > 0.5) {
+            continue;
+        }
+        if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
+            continue;
+        }
+        Vector3d Tx = i == 1 ? T2 : T3;
+        Vector3d Cx = i == 1 ? C2 : C3;
+
+        H.block(nv, V_ID, 1, 3)   = Cx.transpose();
+        H.block(nv, PHI_ID, 1, 3) = Tx.transpose();
+
+        dz(nv) = 0 - vb[i];
+
+        R(nv, nv) = pow(0.4, 2);
         nv++;
     }
-    if (imucur_.dtheta.norm() < 30 * D2R / 100) {
-        H.block(0, PHI_ID, 1, 3) = T2.transpose() * Rotation::skewSymmetric(pvacur_.vel);
-        nv++;
+    // Logging::printMatrix(H);
+
+    if (nv > 1) {
+        EKFUpdate(dz, H, R, KFFilterType::Huber);
+        stateFeedback();
     }
-    if (vb[2] < 0.5) {
-        H.block(1, V_ID, 1, 3) = T3.transpose();
-        nv++;
-    }
-    if (imucur_.dtheta.norm() < 30 * D2R / 100) {
-        H.block(1, PHI_ID, 1, 3) = T3.transpose() * Rotation::skewSymmetric(pvacur_.vel);
-        nv++;
-    }
-    if (nv < 4)
-        return;
-    dz.resize(2, 1);
-    dz(0) = 0 - (T2.transpose() * pvacur_.vel);
-    dz(1) = 0 - (T3.transpose() * pvacur_.vel);
-    R.resize(2, 2);
-    R.setZero();
-    R(0, 0) = 25;
-    R(1, 1) = 25;
-    EKFUpdate(dz, H, R);
+    return nv;
 }

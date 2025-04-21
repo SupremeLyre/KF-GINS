@@ -34,5 +34,6 @@ private:
         double std_ned[3];
         double std_vned[3];
         double vned[3];
+        int nsat[4];
     } temper;
 };
