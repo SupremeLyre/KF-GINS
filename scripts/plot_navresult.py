@@ -37,9 +37,47 @@ def drad2dm(rm, rn, pos, drad):
     return dm
 
 
-def plotNavresult(navresult_filepath):
+def plotNavresult(navresult_filepath,type):
 
-    navresult = np.loadtxt(navresult_filepath)
+    if type == 0:
+        navresult = np.loadtxt(navresult_filepath)
+    elif type == 1:
+        # 逐行读取navresult
+        nav = []
+        with open(navresult_filepath, "r") as f:
+            for line in f:
+                line = line.strip().split()
+                # line是字符串，如果第一位不是字符串型的数字的话，则跳过
+                if not line[0].isdigit():
+                    continue
+                nav.append(line)
+        # 将nav转为np矩阵
+        nav = np.array(nav, dtype=float)
+        # 逐行读取
+        ref = []
+        with open(refresult_filepath, "r") as f:
+            for line in f:
+                line = line.strip().split(",")
+                # 如果不是数字，则跳过
+                if not line[0].isdigit():
+                    continue
+                ref.append(line)
+        ref = np.array(ref, dtype=float)
+        # 提取需要的列
+        # 取出nav的0-4，15-17，24-26列，存到navresult中
+        # 取出ref的0-1，25，24，-26，27-29列，存到refresult中
+        navvel = np.concatenate(
+            (
+                nav[:, 16].reshape(-1, 1),
+                nav[:, 15].reshape(-1, 1),
+                -nav[:, 17].reshape(-1, 1),
+            ),
+            axis=1,
+        )
+        navresult = np.block([[nav[:, 0:5], navvel, nav[:, 24::]]])
+        # navresult = np.block([[nav[:, 0:4], nav[:, 15:17], nav[:, 24:26]]])
+        # refresult = np.block([ref[:, 0:1], ref[:, 25], ref[:, 24], -ref[:, 26], ref[:, 27:29]])
+        # refresult = ref()
 
     # 小范围内将位置转到第一个位置确定的n系
     pos = np.zeros([len(navresult), 4])
@@ -140,14 +178,15 @@ def plotIMUerror(imuerr_filepath):
 
 def plotNavError(navresult_filepath, refresult_filepath):
 
-    naverror = calcNavresultError(navresult_filepath, refresult_filepath)
+    naverror = calcNavresultError(navresult_filepath, refresult_filepath, 0)
     print("calculate mavigtion result error finished!")
     print("plotting navigation error!")
-
+    #统计各列rms
+    rms = np.sqrt(np.mean(np.square(naverror[:, 2:11]), axis=0))
     # 绘制误差曲线
     plt.figure("position error")
     plt.plot(naverror[:, 1], naverror[:, 2:5])
-    plt.legend(["North", "East", "Down"])
+    plt.legend(["North RMS={:.4f}m".format(rms[0]), "East RMS={:.4f}m".format(rms[1]), "Down RMS={:.4f}m".format(rms[2])])
     plt.xlabel("Time [s]")
     plt.ylabel("Error [m]")
     plt.title("Position Error")
@@ -156,7 +195,7 @@ def plotNavError(navresult_filepath, refresult_filepath):
 
     plt.figure("velocity error")
     plt.plot(naverror[:, 1], naverror[:, 5:8])
-    plt.legend(["North", "East", "Down"])
+    plt.legend(["North RMS={:.4f}m/s".format(rms[3]), "East RMS={:.4f}m/s".format(rms[4]), "Down RMS={:.4f}m/s".format(rms[5])])
     plt.xlabel("Time [s]")
     plt.ylabel("Error [m/s]")
     plt.title("Velocity Error")
@@ -165,7 +204,7 @@ def plotNavError(navresult_filepath, refresult_filepath):
 
     plt.figure("attitude error")
     plt.plot(naverror[:, 1], naverror[:, 8:11])
-    plt.legend(["Roll", "Pitch", "Yaw"])
+    plt.legend(["Roll RMS={:.4f}deg".format(rms[6]), "Pitch RMS={:.4f}deg".format(rms[7]), "Yaw RMS={:.4f}deg".format(rms[8])])
     plt.xlabel("Time [s]")
     plt.ylabel("Error [deg]")
     plt.title("Attitude Error")
@@ -246,10 +285,96 @@ def plotSTD(std_filepath):
     plt.show()
 
 
-def calcNavresultError(navresult_filepath, refresult_filepath):
+def calcNavresultError(navresult_filepath, refresult_filepath, type):
 
-    navresult = np.loadtxt(navresult_filepath)
-    refresult = np.loadtxt(refresult_filepath)
+    if type == 0:
+        navresult = np.loadtxt(navresult_filepath)
+        # refresult = np.loadtxt(refresult_filepath)
+        # 逐行读取
+        ref = []
+        with open(refresult_filepath, "r") as f:
+            for line in f:
+                line = line.strip().split(",")
+                # 如果不是数字，则跳过
+                if not line[0].isdigit():
+                    continue
+                ref.append(line)
+        ref = np.array(ref, dtype=float)
+        refvel = np.concatenate(
+            (
+                ref[:, 25].reshape(-1, 1),
+                ref[:, 24].reshape(-1, 1),
+                -ref[:, 26].reshape(-1, 1),
+            ),
+            axis=1,
+        )
+        refresult = np.block(
+            [
+                [
+                    ref[:, 0:2],
+                    ref[:, 30::],
+                    refvel,
+                    ref[:, 27 : 29 + 1],
+                ]
+            ]
+        )
+    elif type == 1:
+        # 逐行读取navresult
+        nav = []
+        with open(navresult_filepath, "r") as f:
+            for line in f:
+                line = line.strip().split()
+                # line是字符串，如果第一位不是字符串型的数字的话，则跳过
+                if not line[0].isdigit():
+                    continue
+                nav.append(line)
+        # 将nav转为np矩阵
+        nav = np.array(nav, dtype=float)
+        # 逐行读取
+        ref = []
+        with open(refresult_filepath, "r") as f:
+            for line in f:
+                line = line.strip().split(",")
+                # 如果不是数字，则跳过
+                if not line[0].isdigit():
+                    continue
+                ref.append(line)
+        ref = np.array(ref, dtype=float)
+        # 提取需要的列
+        # 取出nav的0-4，15-17，24-26列，存到navresult中
+        # 取出ref的0-1，25，24，-26，27-29列，存到refresult中
+        navvel = np.concatenate(
+            (
+                nav[:, 16].reshape(-1, 1),
+                nav[:, 15].reshape(-1, 1),
+                -nav[:, 17].reshape(-1, 1),
+            ),
+            axis=1,
+        )
+        navresult = np.block([[nav[:, 0:5], navvel, nav[:, 24::]]])
+        # refvel = np.block([[ref[:, 25], ref[:, 24], -ref[:, 26]]])
+        refvel = np.concatenate(
+            (
+                ref[:, 25].reshape(-1, 1),
+                ref[:, 24].reshape(-1, 1),
+                -ref[:, 26].reshape(-1, 1),
+            ),
+            axis=1,
+        )
+        refresult = np.block(
+            [
+                [
+                    ref[:, 0:2],
+                    ref[:, 30::],
+                    refvel,
+                    ref[:, 27 : 29 + 1],
+                ]
+            ]
+        )
+
+        # navresult = np.block([[nav[:, 0:4], nav[:, 15:17], nav[:, 24:26]]])
+        # refresult = np.block([ref[:, 0:1], ref[:, 25], ref[:, 24], -ref[:, 26], ref[:, 27:29]])
+        # refresult = ref()
 
     # 航向角平滑
     for i in range(1, len(navresult)):
@@ -309,14 +434,15 @@ if __name__ == "__main__":
 
     # path = './dataset/20230113/pppimu'
     # path = './dataset/20241101/posimu'
-    path = "./dataset/20250103/pppimu"
+    # path = "./dataset/20250103/pppimu"
+    path = "./dataset/20250318/pppimu"
     # 导航结果和导航误差
-    navresult_filepath = path + "/KF_GINS_Navresult.nav"
-    # refresult_filepath =  path + './dataset/example/truth.nav'
+    navresult_filepath = path + "/KF_GINS_Navresult.pos"
+    refresult_filepath = path + "/../truth.txt"
     # 导航结果
-    plotNavresult(navresult_filepath)
+    # plotNavresult(navresult_filepath,0)
     # 计算并绘制导航误差
-    # plotNavError(navresult_filepath, refresult_filepath)
+    plotNavError(navresult_filepath, refresult_filepath)
 
     # 估计的IMU误差
     imuerr_filepath = path + "/KF_GINS_IMU_ERR.txt"

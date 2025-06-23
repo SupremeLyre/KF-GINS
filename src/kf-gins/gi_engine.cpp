@@ -358,7 +358,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // GNSS速度量测新息
     Eigen::MatrixXd dz_vel;
     dz_vel = pvacur_.vel - Earth::cne(gnssdata.blh).transpose() * gnssdata.vel;
-    // EKFUpdate(dz_vel, H_gnssvel, R_gnssvel);
+    EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber);
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
     gnssdata.isvalid = false;
