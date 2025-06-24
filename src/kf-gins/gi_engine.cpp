@@ -53,10 +53,12 @@ GIEngine::GIEngine(GINSOptions &options) {
         2 / imunoise.corr_time * imunoise.gyrbias_std.cwiseProduct(imunoise.gyrbias_std).asDiagonal();
     Qc_.block(BASTD_ID, BASTD_ID, 3, 3) =
         2 / imunoise.corr_time * imunoise.accbias_std.cwiseProduct(imunoise.accbias_std).asDiagonal();
+#ifdef ENASCALE
     Qc_.block(SGSTD_ID, SGSTD_ID, 3, 3) =
         2 / imunoise.corr_time * imunoise.gyrscale_std.cwiseProduct(imunoise.gyrscale_std).asDiagonal();
     Qc_.block(SASTD_ID, SASTD_ID, 3, 3) =
         2 / imunoise.corr_time * imunoise.accscale_std.cwiseProduct(imunoise.accscale_std).asDiagonal();
+#endif
 
     // 设置系统状态(位置、速度、姿态和IMU误差)初值和初始协方差
     // set initial state (position, velocity, attitude and IMU error) and covariance
@@ -88,8 +90,10 @@ void GIEngine::initialize(const NavState &initstate, const NavState &initstate_s
     Cov_.block(PHI_ID, PHI_ID, 3, 3) = initstate_std.euler.cwiseProduct(initstate_std.euler).asDiagonal();
     Cov_.block(BG_ID, BG_ID, 3, 3)   = imuerror_std.gyrbias.cwiseProduct(imuerror_std.gyrbias).asDiagonal();
     Cov_.block(BA_ID, BA_ID, 3, 3)   = imuerror_std.accbias.cwiseProduct(imuerror_std.accbias).asDiagonal();
-    Cov_.block(SG_ID, SG_ID, 3, 3)   = imuerror_std.gyrscale.cwiseProduct(imuerror_std.gyrscale).asDiagonal();
-    Cov_.block(SA_ID, SA_ID, 3, 3)   = imuerror_std.accscale.cwiseProduct(imuerror_std.accscale).asDiagonal();
+#ifdef ENASCALE
+    Cov_.block(SG_ID, SG_ID, 3, 3) = imuerror_std.gyrscale.cwiseProduct(imuerror_std.gyrscale).asDiagonal();
+    Cov_.block(SA_ID, SA_ID, 3, 3) = imuerror_std.accscale.cwiseProduct(imuerror_std.accscale).asDiagonal();
+#endif
 }
 
 void GIEngine::newImuProcess() {
@@ -145,7 +149,7 @@ void GIEngine::newImuProcess() {
     }
     // 使用NHC添加约束
     // add constraint using NHC
-#if 1
+#if 0
     int nv = nhc(pvacur_);
 #endif
     // 检查协方差矩阵对角线元素
@@ -272,14 +276,18 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     F.block(PHI_ID, V_ID, 3, 3)   = temp;
     F.block(PHI_ID, PHI_ID, 3, 3) = -Rotation::skewSymmetric(wie_n + wen_n);
     F.block(PHI_ID, BG_ID, 3, 3)  = -pvapre_.att.cbn;
-    F.block(PHI_ID, SG_ID, 3, 3)  = -pvapre_.att.cbn * (omega.asDiagonal());
+#ifdef ENASCALE
+    F.block(PHI_ID, SG_ID, 3, 3) = -pvapre_.att.cbn * (omega.asDiagonal());
+#endif
 
     // IMU零偏误差和比例因子误差，建模成一阶高斯-马尔科夫过程
     // imu bias error and scale error, modeled as the first-order Gauss-Markov process
     F.block(BG_ID, BG_ID, 3, 3) = -1 / options_.imunoise.corr_time * Eigen::Matrix3d::Identity();
     F.block(BA_ID, BA_ID, 3, 3) = -1 / options_.imunoise.corr_time * Eigen::Matrix3d::Identity();
+#ifdef ENASCALE
     F.block(SG_ID, SG_ID, 3, 3) = -1 / options_.imunoise.corr_time * Eigen::Matrix3d::Identity();
     F.block(SA_ID, SA_ID, 3, 3) = -1 / options_.imunoise.corr_time * Eigen::Matrix3d::Identity();
+#endif
 
     // 系统噪声驱动矩阵
     // system noise driven matrix
@@ -287,9 +295,10 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     G.block(PHI_ID, ARW_ID, 3, 3)  = pvapre_.att.cbn;
     G.block(BG_ID, BGSTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
     G.block(BA_ID, BASTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
+#ifdef ENASCALE
     G.block(SG_ID, SGSTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
     G.block(SA_ID, SASTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
-
+#endif
     // 状态转移矩阵
     // compute the state transition matrix
     Phi.setIdentity();
@@ -335,7 +344,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
 
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
-    EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
+    EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::EKF);
 
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -350,15 +359,17 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
           Rotation::skewSymmetric(pvacur_.att.cbn *
                                   (Rotation::skewSymmetric(options_.antlever) * imucur_.dtheta / imucur_.dt)));
     H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
+#ifdef ENASCALE
     H_gnssvel.block(0, SG_ID, 3, 3) =
         -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * imucur_.dtheta.asDiagonal() / imucur_.dt;
+#endif
     // GNSS速度观测噪声矩阵
     Eigen::MatrixXd R_gnssvel;
     R_gnssvel = gnssdata.vstd.cwiseProduct(gnssdata.vstd).asDiagonal();
     // GNSS速度量测新息
     Eigen::MatrixXd dz_vel;
     dz_vel = pvacur_.vel - Earth::cne(gnssdata.blh).transpose() * gnssdata.vel;
-    EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber);
+    // EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::EKF);
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
     gnssdata.isvalid = false;
@@ -477,11 +488,13 @@ void GIEngine::stateFeedback() {
 
     // IMU比例因子误差反馈
     // IMU sacle error feedback
+
+#ifdef ENASCALE
     vectemp = dx_.block(SG_ID, 0, 3, 1);
     imuerror_.gyrscale += vectemp;
     vectemp = dx_.block(SA_ID, 0, 3, 1);
     imuerror_.accscale += vectemp;
-
+#endif
     // 误差状态反馈到系统状态后,将误差状态清零
     // set 'dx' to zero after feedback error state to system state
     dx_.setZero();
@@ -545,8 +558,36 @@ int GIEngine::nhc(PVA pvacur_) {
     // Logging::printMatrix(H);
 
     if (nv > 1) {
-        EKFUpdate(dz, H, R, KFFilterType::Huber);
+        EKFUpdate(dz, H, R, KFFilterType::EKF);
         stateFeedback();
     }
     return nv;
+}
+int GIEngine::zupt(PVA pvacur_) {
+    Eigen::Matrix3d Cnb = pvacur_.att.cbn.transpose();
+    Eigen::MatrixXd T1, T2, T3;
+
+    T1 = Cnb.row(0);
+    T2 = Cnb.row(1);
+    T3 = Cnb.row(2);
+
+    Eigen::Vector3d vn = pvacur_.vel;
+    Eigen::Vector3d vb = Cnb * vn;
+    Eigen::MatrixXd H, R, dz;
+    dz.resize(3, 1);
+    R.resize(3, 3);
+    R.setZero();
+    H.resize(3, Cov_.rows());
+    H.setZero();
+    H.block(0, V_ID, 3, 3) << Cnb;
+    H.block(0, PHI_ID, 3, 3) << Cnb * Rotation::skewSymmetric(vn);
+    dz(0)   = T1(0) * vn(0) + T1(1) * vn(1) + T1(2) * vn(2);
+    dz(1)   = T2(0) * vn(0) + T2(1) * vn(1) + T2(2) * vn(2);
+    dz(2)   = T3(0) * vn(0) + T3(1) * vn(1) + T3(2) * vn(2);
+    R(0, 0) = pow(0.4, 2);
+    R(1, 1) = pow(0.4, 2);
+    R(2, 2) = pow(0.4, 2);
+    EKFUpdate(dz, H, R, KFFilterType::EKF);
+    stateFeedback();
+    return 0;
 }

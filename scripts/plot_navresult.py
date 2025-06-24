@@ -145,6 +145,7 @@ def plotIMUerror(imuerr_filepath):
     plt.title("Gyroscope Bias")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("gyro_bias.png", dpi=300)
 
     plt.figure("accel bias")
     plt.plot(imuerr[:, 0], imuerr[:, 4:7])
@@ -154,6 +155,7 @@ def plotIMUerror(imuerr_filepath):
     plt.title("Accelerometer Bias")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("accel_bias.png", dpi=300)
 
     plt.figure("gyro scale")
     plt.plot(imuerr[:, 0], imuerr[:, 7:10])
@@ -173,12 +175,14 @@ def plotIMUerror(imuerr_filepath):
     plt.grid()
     plt.tight_layout()
 
-    plt.show()
+    # plt.show()
 
 
-def plotNavError(navresult_filepath, refresult_filepath):
+def plotNavError(navresult_filepath, refresult_filepath,type):
 
-    naverror = calcNavresultError(navresult_filepath, refresult_filepath, 0)
+    naverror = calcNavresultError(navresult_filepath, refresult_filepath, type)
+    #将 naverror 输出成一个文件
+    np.savetxt("naverror1.txt", naverror)
     print("calculate mavigtion result error finished!")
     print("plotting navigation error!")
     #统计各列rms
@@ -192,6 +196,8 @@ def plotNavError(navresult_filepath, refresult_filepath):
     plt.title("Position Error")
     plt.grid()
     plt.tight_layout()
+    # 保存图片，300dpi
+    plt.savefig("pos_error.png", dpi=300)
 
     plt.figure("velocity error")
     plt.plot(naverror[:, 1], naverror[:, 5:8])
@@ -201,6 +207,7 @@ def plotNavError(navresult_filepath, refresult_filepath):
     plt.title("Velocity Error")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("vel_error.png", dpi=300)
 
     plt.figure("attitude error")
     plt.plot(naverror[:, 1], naverror[:, 8:11])
@@ -210,8 +217,9 @@ def plotNavError(navresult_filepath, refresult_filepath):
     plt.title("Attitude Error")
     plt.grid()
     plt.tight_layout()
-
-    plt.show()
+    # 保存图片
+    plt.savefig("attitude_error.png", dpi=300)
+    # plt.show()
 
 
 def plotSTD(std_filepath):
@@ -371,6 +379,9 @@ def calcNavresultError(navresult_filepath, refresult_filepath, type):
                 ]
             ]
         )
+    elif type == 2:
+        navresult = np.loadtxt(navresult_filepath)
+        refresult = np.loadtxt(refresult_filepath)
 
         # navresult = np.block([[nav[:, 0:4], nav[:, 15:17], nav[:, 24:26]]])
         # refresult = np.block([ref[:, 0:1], ref[:, 25], ref[:, 24], -ref[:, 26], ref[:, 27:29]])
@@ -436,17 +447,21 @@ if __name__ == "__main__":
     # path = './dataset/20241101/posimu'
     # path = "./dataset/20250103/pppimu"
     path = "./dataset/20250318/pppimu"
+    # path = "./dataset/example"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"
     refresult_filepath = path + "/../truth.txt"
+    # refresult_filepath = path + "/truth.nav"
     # 导航结果
     # plotNavresult(navresult_filepath,0)
     # 计算并绘制导航误差
-    plotNavError(navresult_filepath, refresult_filepath)
+    plotNavError(navresult_filepath, refresult_filepath, 0)
+    # plotNavError(navresult_filepath, refresult_filepath, 2)
+
 
     # 估计的IMU误差
     imuerr_filepath = path + "/KF_GINS_IMU_ERR.txt"
-    # plotIMUerror(imuerr_filepath)
+    plotIMUerror(imuerr_filepath)
 
     # 估计的导航状态标准差和IMU误差标准差
     std_filepath = path + "/KF_GINS_STD.txt"

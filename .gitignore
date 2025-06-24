@@ -3,3 +3,4 @@ lib/
 build/
 .idea/
 dataset/
+*.png

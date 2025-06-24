@@ -11,6 +11,7 @@ bool PPPFileLoader::load_() {
     if (isEof())
         return false;
     data_.resize(columns_);
+    FILE *fp = fopen("./res_vxyz.txt", "a");
     string line;
     std::getline(filefp_, line);
     std::stringstream iss(line);
@@ -41,17 +42,20 @@ bool PPPFileLoader::load_() {
     blh = Earth::ecef2blh(ecef);
     Eigen::Matrix3d Conv_, Conv_v;
     Conv_ << temper.std_xyz[0], 0, 0, 0, temper.std_xyz[1], 0, 0, 0, temper.std_xyz[2];
-    Conv_v << temper.qdpos[0], 0, 0, 0, temper.qdpos[1], 0, 0, 0, temper.qdpos[2];
+    Conv_v << 1, 0, 0, 0, 1, 0, 0, 0, 1;
     Eigen::Vector3d stdned  = (Earth::cne(blh).transpose() * Conv_ * Earth::cne(blh)).diagonal();
     Eigen::Vector3d vstdned = (Earth::cne(blh).transpose() * Conv_v * Earth::cne(blh)).diagonal();
     Eigen::Vector3d vned;
-    vned << temper.dpos[0], temper.dpos[1], temper.dpos[2];
+    vned << temper.vxyz[0], temper.vxyz[1], temper.vxyz[2];
     vned = Earth::cne(blh).transpose() * vned;
-    for (int i = 0; i < 3; i++) {
+    // 输出时间，vned到文件
+    fprintf(fp, "%d,%.3f,%.3f,%.3f,%.3f\n", week, tow, vned[0], vned[1], vned[2]);
+    for (auto i = 0; i < 3; i++) {
         temper.blh[i]      = blh[i];
-        temper.std_ned[i]  = stdned[i];
+        temper.std_ned[i]  = temper.stat == 4 ? stdned[i] : 100 * stdned[i];
         temper.std_vned[i] = vstdned[i];
         temper.vned[i]     = vned[i];
     }
+    fclose(fp);
     return stat;
 }
