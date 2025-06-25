@@ -145,7 +145,7 @@ def plotIMUerror(imuerr_filepath):
     plt.title("Gyroscope Bias")
     plt.grid()
     plt.tight_layout()
-    plt.savefig("gyro_bias.png", dpi=300)
+    plt.savefig("figs/gyro_bias.png", dpi=300)
 
     plt.figure("accel bias")
     plt.plot(imuerr[:, 0], imuerr[:, 4:7])
@@ -155,7 +155,7 @@ def plotIMUerror(imuerr_filepath):
     plt.title("Accelerometer Bias")
     plt.grid()
     plt.tight_layout()
-    plt.savefig("accel_bias.png", dpi=300)
+    plt.savefig("figs/accel_bias.png", dpi=300)
 
     plt.figure("gyro scale")
     plt.plot(imuerr[:, 0], imuerr[:, 7:10])
@@ -183,7 +183,7 @@ def plotNavError(navresult_filepath, refresult_filepath,type):
     naverror = calcNavresultError(navresult_filepath, refresult_filepath, type)
     #将 naverror 输出成一个文件
     np.savetxt("naverror1.txt", naverror)
-    print("calculate mavigtion result error finished!")
+    print("calculate navigtion result error finished!")
     print("plotting navigation error!")
     #统计各列rms
     rms = np.sqrt(np.mean(np.square(naverror[:, 2:11]), axis=0))
@@ -197,7 +197,7 @@ def plotNavError(navresult_filepath, refresult_filepath,type):
     plt.grid()
     plt.tight_layout()
     # 保存图片，300dpi
-    plt.savefig("pos_error.png", dpi=300)
+    plt.savefig("figs/pos_error.png", dpi=300)
 
     plt.figure("velocity error")
     plt.plot(naverror[:, 1], naverror[:, 5:8])
@@ -207,7 +207,7 @@ def plotNavError(navresult_filepath, refresult_filepath,type):
     plt.title("Velocity Error")
     plt.grid()
     plt.tight_layout()
-    plt.savefig("vel_error.png", dpi=300)
+    plt.savefig("figs/vel_error.png", dpi=300)
 
     plt.figure("attitude error")
     plt.plot(naverror[:, 1], naverror[:, 8:11])
@@ -218,7 +218,7 @@ def plotNavError(navresult_filepath, refresult_filepath,type):
     plt.grid()
     plt.tight_layout()
     # 保存图片
-    plt.savefig("attitude_error.png", dpi=300)
+    plt.savefig("figs/attitude_error.png", dpi=300)
     # plt.show()
 
 
