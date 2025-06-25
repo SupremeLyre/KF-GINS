@@ -363,7 +363,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
               Earth::iewn(pvacur_.pos[0])) *
               Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
           Rotation::skewSymmetric(pvacur_.att.cbn *
-                                  (Rotation::skewSymmetric(options_.antlever) * imucur_.dtheta / imucur_.dt)));
+                                  (Rotation::skewSymmetric(options_.antlever) * (imucur_.dtheta / imucur_.dt))));
     H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
     if (engineopt_.estimate_scale) {
         H_gnssvel.block(0, SG_ID, 3, 3) =
