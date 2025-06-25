@@ -165,6 +165,7 @@ def plotIMUerror(imuerr_filepath):
     plt.title("Gyroscope Scale")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/gyro_scale.png", dpi=300)
 
     plt.figure("accel scale")
     plt.plot(imuerr[:, 0], imuerr[:, 10:13])
@@ -174,6 +175,7 @@ def plotIMUerror(imuerr_filepath):
     plt.title("Accelerometer Scale")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/acce_scale.png", dpi=300)
 
     # plt.show()
 

@@ -260,7 +260,9 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     F.block(V_ID, V_ID, 3, 3)   = temp;
     F.block(V_ID, PHI_ID, 3, 3) = Rotation::skewSymmetric(pvapre_.att.cbn * accel);
     F.block(V_ID, BA_ID, 3, 3)  = pvapre_.att.cbn;
-    F.block(V_ID, SA_ID, 3, 3)  = pvapre_.att.cbn * (accel.asDiagonal());
+    if (engineopt_.estimate_scale) {
+        F.block(V_ID, SA_ID, 3, 3) = pvapre_.att.cbn * (accel.asDiagonal());
+    }
 
     // 姿态误差
     // attitude error
@@ -359,8 +361,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     H_gnssvel.setZero();
     H_gnssvel.block(0, V_ID, 3, 3) = Eigen::Matrix3d::Identity();
     H_gnssvel.block(0, PHI_ID, 3, 3) =
-        -(Rotation::skewSymmetric(
-              Earth::iewn(pvacur_.pos[0])) *
+        -(Rotation::skewSymmetric(Earth::iewn(pvacur_.pos[0])) *
               Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
           Rotation::skewSymmetric(pvacur_.att.cbn *
                                   (Rotation::skewSymmetric(options_.antlever) * (imucur_.dtheta / imucur_.dt))));
