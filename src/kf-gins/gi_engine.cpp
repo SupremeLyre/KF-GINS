@@ -374,7 +374,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     R_gnssvel = gnssdata.vstd.cwiseProduct(gnssdata.vstd).asDiagonal();
     // GNSS速度量测新息
     Eigen::MatrixXd dz_vel;
-    dz_vel = pvacur_.vel - Earth::cne(gnssdata.blh).transpose() * gnssdata.vel;
+    dz_vel = antenna_vel - gnssdata.vel;
     if (engineopt_.enable_gnss_vel) {
         EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::EKF);
     }
