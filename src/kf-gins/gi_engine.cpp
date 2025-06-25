@@ -321,12 +321,14 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
 
     // IMU位置转到GNSS天线相位中心位置
     // convert IMU position to GNSS antenna phase center position
-    Eigen::Vector3d antenna_pos;
+    Eigen::Vector3d antenna_pos, antenna_vel;
     Eigen::Matrix3d Dr, Dr_inv;
     Dr_inv      = Earth::DRi(pvacur_.pos);
     Dr          = Earth::DR(pvacur_.pos);
     antenna_pos = pvacur_.pos + Dr_inv * pvacur_.att.cbn * options_.antlever;
-
+    antenna_vel = pvacur_.vel -
+                  Rotation::skewSymmetric(Earth::iewn(pvacur_.pos[0])) * (pvacur_.att.cbn * options_.antlever) -
+                  pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * (imucur_.dtheta / imucur_.dt));
     // GNSS位置测量新息
     // compute GNSS position innovation
     Eigen::MatrixXd dz;
@@ -358,8 +360,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     H_gnssvel.block(0, V_ID, 3, 3) = Eigen::Matrix3d::Identity();
     H_gnssvel.block(0, PHI_ID, 3, 3) =
         -(Rotation::skewSymmetric(
-              Earth::iewn(pvacur_.pos[0]) +
-              Earth::enwn(Earth::meridianPrimeVerticalRadius(pvacur_.pos[0]), pvacur_.pos, pvacur_.vel)) *
+              Earth::iewn(pvacur_.pos[0])) *
               Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
           Rotation::skewSymmetric(pvacur_.att.cbn *
                                   (Rotation::skewSymmetric(options_.antlever) * imucur_.dtheta / imucur_.dt)));
