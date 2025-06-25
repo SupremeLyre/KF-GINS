@@ -24,12 +24,11 @@
 #define GI_ENGINE_H
 
 #include <Eigen/Dense>
-#include <vector>
 
 #include "common/types.h"
 
 #include "kf_gins_types.h"
-// #define ENASCALE
+
 class GIEngine {
 
 public:
@@ -130,6 +129,7 @@ public:
     }
     int nhc(PVA pvacur_);
     int zupt(PVA pvacur_);
+
 private:
     /**
      * @brief 初始化系统状态和协方差
@@ -139,11 +139,7 @@ private:
      * @param [in] initstate_std 初始状态标准差
      *                           initial state std
      * */
-     enum class KFFilterType{
-        EKF,
-        Huber,
-        IGG3
-     };
+    enum class KFFilterType { EKF, Huber, IGG3 };
     void initialize(const NavState &initstate, const NavState &initstate_std);
 
     /**
@@ -232,9 +228,10 @@ private:
             }
         }
     }
-    
+
 private:
     GINSOptions options_;
+    GIEngineOpt engineopt_;
     int week_;
     double timestamp_;
 
@@ -259,13 +256,8 @@ private:
     Eigen::MatrixXd Cov_;
     Eigen::MatrixXd Qc_;
     Eigen::MatrixXd dx_;
-#ifdef ENASCALE
     const int RANK      = 21;
     const int NOISERANK = 18;
-#else
-    const int RANK = 15;
-    const int NOISERANK = 12;
-#endif
     // 状态ID和噪声ID
     // state ID and noise ID
     enum StateID { P_ID = 0, V_ID = 3, PHI_ID = 6, BG_ID = 9, BA_ID = 12, SG_ID = 15, SA_ID = 18 };

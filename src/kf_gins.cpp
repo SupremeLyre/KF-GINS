@@ -311,7 +311,18 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         return false;
     }
     options.antlever = Eigen::Vector3d(vec1.data());
-
+    GIEngineOpt opt1;
+    try {
+        opt1.estimate_scale  = config["options"]["estimate_scale"].as<bool>();
+        opt1.enable_gnss_pos = config["options"]["enable_gnss_pos"].as<bool>();
+        opt1.enable_gnss_vel = config["options"]["enable_gnss_vel"].as<bool>();
+        opt1.enable_nhc      = config["options"]["enable_nhc"].as<bool>();
+        opt1.enable_zupt     = config["options"]["enable_zupt"].as<bool>();
+    } catch (YAML::Exception &exception) {
+        std::cout << "Failed when loading configuration. Please check engine options!" << std::endl;
+        return false;
+    }
+    options.engineopt = opt1;
     return true;
 }
 

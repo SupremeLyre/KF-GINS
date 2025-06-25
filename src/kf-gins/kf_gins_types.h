@@ -66,6 +66,14 @@ typedef struct ImuNoise {
     double corr_time;
 } ImuNoise;
 
+struct GIEngineOptions {
+    bool estimate_scale;
+    bool enable_gnss_pos;
+    bool enable_gnss_vel;
+    bool enable_nhc;
+    bool enable_zupt;
+};
+using GIEngineOpt = GIEngineOptions;
 typedef struct GINSOptions {
 
     // 初始状态和状态标准差
@@ -135,6 +143,7 @@ typedef struct GINSOptions {
         std::cout << " - Antenna leverarm: " << antlever.transpose() << " [m] " << std::endl << std::endl;
     }
 
+    GIEngineOpt engineopt;
 } GINSOptions;
 
 #endif // KF_GINS_TYPES_H
