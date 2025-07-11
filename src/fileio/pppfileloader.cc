@@ -52,11 +52,8 @@ bool PPPFileLoader::load_() {
     fprintf(fp, "%d,%.3f,%.3f,%.3f,%.3f\n", week, tow, vned[0], vned[1], vned[2]);
     for (auto i = 0; i < 3; i++) {
         temper.blh[i]      = blh[i];
-        temper.std_ned[i]  = temper.stat == 4 && temper.stat_dpos == 1 && temper.qdpos[0] < 1.0 &&
-                                    temper.qdpos[1] < 1.0 && temper.qdpos[2] > 0.0 && temper.qdpos[2] < 1.0
-                                 ? stdned[i]
-                                 : 30.0;
-        temper.std_vned[i] = temper.stat == 4 ? vstdned[i]: 4.0;
+        temper.std_ned[i]  = 1.0;
+        temper.std_vned[i] = 0.01;
         temper.vned[i]     = vned[i];
     }
     fclose(fp);

@@ -35,6 +35,7 @@
 #include "common/logging.h"
 #include "fileio/posfileloader.hpp"
 #include "fileio/pppfileloader.hpp"
+#include "fileio/respppfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 #include "kf-gins/kf_gins_types.h"
 
@@ -143,6 +144,13 @@ int main(int argc, char *argv[]) {
         }
     } else if (newtype == 2) {
         PosFileLoader gnssfile(gnsspath);
+        AdisFileLoader imufile(imupath);
+        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                    timestamp, navstate, cov, interval, percent, lastpercent)) {
+            return -1;
+        }
+    } else if (newtype == 3) {
+        ResPppFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
         if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {

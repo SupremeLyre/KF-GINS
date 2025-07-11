@@ -562,7 +562,7 @@ int GIEngine::nhc(PVA pvacur_) {
 
         dz(nv) = 0 - vb[i];
 
-        R(nv, nv) = pow(0.4, 2);
+        R(nv, nv) = pow(2.0, 2);
         nv++;
     }
     // Logging::printMatrix(H);
