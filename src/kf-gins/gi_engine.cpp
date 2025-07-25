@@ -19,14 +19,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include "gi_engine.h"
 #include "common/angle.h"
 #include "common/earth.h"
 #include "common/logging.h"
 #include "common/rotation.h"
-#include <Eigen/Eigen>
-
-#include "gi_engine.h"
+#include "common/types.h"
 #include "insmech.h"
+#include "kf-gins/kf_gins_types.h"
+#include <Eigen/Eigen>
+#include <format>
 
 GIEngine::GIEngine(GINSOptions &options) {
 
@@ -153,7 +155,9 @@ void GIEngine::newImuProcess() {
     if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
     }
-
+    if (engineopt_.enable_zupt && isStatic()) {
+        int nv = zupt(pvacur_);
+    }
     // 检查协方差矩阵对角线元素
     // check diagonal elements of current covariance matrix
     checkCov();
@@ -547,23 +551,25 @@ int GIEngine::nhc(PVA pvacur_) {
     H.resize(2, Cov_.rows());
     H.setZero();
     int nv = 0;
-    for (int i = 1; i < 3; i++) {
-        if (fabs(vb[i]) > 0.5) {
-            continue;
+    if (fabs(vb[0]) > 2) {
+        for (int i = 1; i < 3; i++) {
+            if (fabs(vb[i]) > 0.5) {
+                continue;
+            }
+            if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
+                continue;
+            }
+            Vector3d Tx = i == 1 ? T2 : T3;
+            Vector3d Cx = i == 1 ? C2 : C3;
+
+            H.block(nv, V_ID, 1, 3)   = Cx.transpose();
+            H.block(nv, PHI_ID, 1, 3) = Tx.transpose();
+
+            dz(nv) = 0 - vb[i];
+
+            R(nv, nv) = pow(2.0, 2);
+            nv++;
         }
-        if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
-            continue;
-        }
-        Vector3d Tx = i == 1 ? T2 : T3;
-        Vector3d Cx = i == 1 ? C2 : C3;
-
-        H.block(nv, V_ID, 1, 3)   = Cx.transpose();
-        H.block(nv, PHI_ID, 1, 3) = Tx.transpose();
-
-        dz(nv) = 0 - vb[i];
-
-        R(nv, nv) = pow(2.0, 2);
-        nv++;
     }
     // Logging::printMatrix(H);
 
@@ -594,10 +600,68 @@ int GIEngine::zupt(PVA pvacur_) {
     dz(0)   = T1(0) * vn(0) + T1(1) * vn(1) + T1(2) * vn(2);
     dz(1)   = T2(0) * vn(0) + T2(1) * vn(1) + T2(2) * vn(2);
     dz(2)   = T3(0) * vn(0) + T3(1) * vn(1) + T3(2) * vn(2);
-    R(0, 0) = pow(0.4, 2);
-    R(1, 1) = pow(0.4, 2);
-    R(2, 2) = pow(0.4, 2);
+    R(0, 0) = pow(0.1, 2);
+    R(1, 1) = pow(0.1, 2);
+    R(2, 2) = pow(0.1, 2);
     EKFUpdate(dz, H, R, KFFilterType::EKF);
     stateFeedback();
     return 0;
+}
+
+bool GIEngine::isStatic() {
+    bool isZupt{false};
+    bool flag_t{false};
+    Eigen::Vector3d accmean{0.0, 0.0, 0.0};
+    Eigen::Vector3d gyromean{0.0, 0.0, 0.0};
+    Eigen::Vector3d accstd{0.0, 0.0, 0.0};
+    Eigen::Vector3d gyrstd{0.0, 0.0, 0.0};
+    Eigen::Vector3d resacc{0.0, 0.0, 0.0};
+    Eigen::Vector3d resgyr{0.0, 0.0, 0.0};
+    // GNSS速度小于阈值，直接成立
+    if (gnssdata_.vel.norm() != 0.0 && gnssdata_.vel.norm() < options_.engineopt.zuptopt.vel_threshold) {
+        isZupt = true;
+    }
+    // 利用双向队列存储imu原始数据，用于进行静止判断
+    if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= options_.engineopt.zuptopt.interval) {
+        imuwindow_.push_back(imucur_);
+    } else {
+        // 退一个头部元素，在尾部插入一个新元素
+        imuwindow_.pop_front();
+        imuwindow_.push_back(imucur_);
+        // 计算IMU数据的平均加速度和加速度标准差
+        for (auto imu : imuwindow_) {
+            accmean += imu.dvel / imu.dt;
+        }
+        accmean /= imuwindow_.size();
+        // 计算IMU数据的平均角速度和角速度标准差
+        for (auto imu : imuwindow_) {
+            gyromean += imu.dtheta / imu.dt;
+        }
+        gyromean /= imuwindow_.size();
+        for (auto imu : imuwindow_) {
+            accstd += (imu.dvel - accmean).cwiseProduct(imu.dvel - accmean);
+        }
+        accstd /= imuwindow_.size();
+        // 开方
+        accstd = accstd.cwiseSqrt();
+        for (auto imu : imuwindow_) {
+            gyrstd += (imu.dtheta - gyromean).cwiseProduct(imu.dtheta - gyromean);
+        }
+        gyrstd /= imuwindow_.size();
+        gyrstd = gyrstd.cwiseSqrt();
+        // 计算当前历元加速度角速度与均值的差
+        resacc = imucur_.dvel - accmean;
+        resgyr = imucur_.dtheta - gyromean;
+        // 3-sigma准则检验当前IMU数值是否异常
+        if (resacc.norm() < 3 * accstd.norm() && resgyr.norm() < 3 * gyrstd.norm()) {
+            flag_t = true;
+        }
+        if (flag_t && accstd.norm() < options_.engineopt.zuptopt.fb_threshold &&
+            gyrstd.norm() * R2D < options_.engineopt.zuptopt.wib_threshold) {
+            isZupt = true;
+        }
+        //
+        // LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time) << std::endl;
+    }
+    return isZupt;
 }

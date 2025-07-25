@@ -330,6 +330,15 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         std::cout << "Failed when loading configuration. Please check engine options!" << std::endl;
         return false;
     }
+    try {
+        opt1.zuptopt.interval      = config["zupt"]["interval"].as<double>();
+        opt1.zuptopt.vel_threshold = config["zupt"]["vel_threshold"].as<double>();
+        opt1.zuptopt.wib_threshold = config["zupt"]["wib_threshold"].as<double>();
+        opt1.zuptopt.fb_threshold  = config["zupt"]["fb_threshold"].as<double>();
+    } catch (YAML::Exception &exception) {
+        std::cout << "Failed when loading configuration. Please check zupt options!" << std::endl;
+        return false;
+    }
     options.engineopt = opt1;
     return true;
 }

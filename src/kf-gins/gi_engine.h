@@ -22,7 +22,7 @@
 
 #ifndef GI_ENGINE_H
 #define GI_ENGINE_H
-
+#include <deque>
 #include <Eigen/Dense>
 
 #include "common/types.h"
@@ -129,6 +129,7 @@ public:
     }
     int nhc(PVA pvacur_);
     int zupt(PVA pvacur_);
+    bool isStatic();
 
 private:
     /**
@@ -244,6 +245,8 @@ private:
     IMU imupre_;
     IMU imucur_;
     GNSS gnssdata_;
+    // IMU 原始数据滑动窗口
+    std::deque<IMU> imuwindow_;
 
     // IMU状态（位置、速度、姿态和IMU误差）
     // imu state (position, velocity, attitude and imu error)

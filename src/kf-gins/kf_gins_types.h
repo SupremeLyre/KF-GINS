@@ -66,13 +66,21 @@ typedef struct ImuNoise {
     double corr_time;
 } ImuNoise;
 
+struct ZUPTOptions {
+    double interval;
+    double vel_threshold;
+    double wib_threshold;
+    double fb_threshold;
+};
 struct GIEngineOptions {
     bool estimate_scale;
     bool enable_gnss_pos;
     bool enable_gnss_vel;
     bool enable_nhc;
     bool enable_zupt;
+    ZUPTOptions zuptopt;
 };
+using ZuptOptions = ZUPTOptions;
 using GIEngineOpt = GIEngineOptions;
 typedef struct GINSOptions {
 

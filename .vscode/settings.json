@@ -7,5 +7,6 @@
             // "dataset/example/kf-gins.yaml",
         ],
         "cwd": "${workspaceFolder}"
-    }
+    },
+    "ros.distro": "noetic"
 }
