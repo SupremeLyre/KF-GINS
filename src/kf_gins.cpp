@@ -339,6 +339,14 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         std::cout << "Failed when loading configuration. Please check zupt options!" << std::endl;
         return false;
     }
+    try {
+        auto vec = config["imu_misalign"].as<std::vector<double>>();
+
+        options.imu_misalign = Eigen::Vector3d(vec[0], vec[1], vec[2]) * D2R;
+    } catch (YAML::Exception &exception) {
+        std::cout << "Missing imu_misalign configuration!" << std::endl;
+        return false;
+    }
     options.engineopt = opt1;
     return true;
 }

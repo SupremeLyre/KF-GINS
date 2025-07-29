@@ -45,9 +45,11 @@ public:
      *                        if compensate imu error to new imudata
      * */
     void addImuData(const IMU &imu, bool compensate = false) {
-
+        IMU imu_ = imu;
+        imu_.dtheta = C_imu_body * imu_.dtheta;
+        imu_.dvel = C_imu_body * imu_.dvel;
         imupre_ = imucur_;
-        imucur_ = imu;
+        imucur_ = imu_;
 
         if (compensate) {
             imuCompensate(imucur_);
@@ -253,7 +255,7 @@ private:
     PVA pvacur_;
     PVA pvapre_;
     ImuError imuerror_;
-
+    Eigen::Matrix3d C_imu_body;
     // Kalman滤波相关
     // ekf variables
     Eigen::MatrixXd Cov_;

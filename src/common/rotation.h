@@ -101,24 +101,6 @@ public:
         mat << 0, -vector(2), vector(1), vector(2), 0, -vector(0), -vector(1), vector(0), 0;
         return mat;
     }
-
-    static Eigen::Matrix4d quaternionleft(const Quaterniond &q) {
-        Eigen::Matrix4d ans;
-        ans(0, 0)             = q.w();
-        ans.block<1, 3>(0, 1) = -q.vec().transpose();
-        ans.block<3, 1>(1, 0) = q.vec();
-        ans.block<3, 3>(1, 1) = q.w() * Eigen::Matrix3d::Identity() + skewSymmetric(q.vec());
-        return ans;
-    }
-
-    static Eigen::Matrix4d quaternionright(const Quaterniond &p) {
-        Eigen::Matrix4d ans;
-        ans(0, 0)             = p.w();
-        ans.block<1, 3>(0, 1) = -p.vec().transpose();
-        ans.block<3, 1>(1, 0) = p.vec();
-        ans.block<3, 3>(1, 1) = p.w() * Eigen::Matrix3d::Identity() - skewSymmetric(p.vec());
-        return ans;
-    }
 };
 
 #endif // ROTATION_H

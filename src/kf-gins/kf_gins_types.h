@@ -152,6 +152,7 @@ typedef struct GINSOptions {
     }
 
     GIEngineOpt engineopt;
+    Eigen::Vector3d imu_misalign;
 } GINSOptions;
 
 #endif // KF_GINS_TYPES_H

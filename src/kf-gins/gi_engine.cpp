@@ -66,6 +66,7 @@ GIEngine::GIEngine(GINSOptions &options) {
     // set initial state (position, velocity, attitude and IMU error) and covariance
     initialize(options_.initstate, options_.initstate_std);
     engineopt_ = options_.engineopt;
+    C_imu_body = Rotation::euler2matrix(options_.imu_misalign);
 }
 
 void GIEngine::initialize(const NavState &initstate, const NavState &initstate_std) {
@@ -553,12 +554,14 @@ int GIEngine::nhc(PVA pvacur_) {
     int nv = 0;
     if (fabs(vb[0]) > 2) {
         for (int i = 1; i < 3; i++) {
+#if 1
             if (fabs(vb[i]) > 0.5) {
                 continue;
             }
             if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
                 continue;
             }
+#endif
             Vector3d Tx = i == 1 ? T2 : T3;
             Vector3d Cx = i == 1 ? C2 : C3;
 
@@ -567,7 +570,7 @@ int GIEngine::nhc(PVA pvacur_) {
 
             dz(nv) = 0 - vb[i];
 
-            R(nv, nv) = pow(2.0, 2);
+            R(nv, nv) = pow(1.0, 2);
             nv++;
         }
     }
