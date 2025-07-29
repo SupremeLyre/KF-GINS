@@ -33,7 +33,7 @@
 GIEngine::GIEngine(GINSOptions &options) {
 
     this->options_ = options;
-    options_.print_options();
+    // options_.print_options();
     week_      = 0;
     timestamp_ = 0;
 
@@ -153,7 +153,9 @@ void GIEngine::newImuProcess() {
     }
     // 使用NHC添加约束
     // add constraint using NHC
-    if (engineopt_.enable_nhc) {
+    // || (imucur_.time > 188723 && imucur_.time < 188771)
+    if (engineopt_.enable_nhc &&
+        ((imucur_.time > 188431 && imucur_.time < 188540))) {
         int nv = nhc(pvacur_);
     }
     if (engineopt_.enable_zupt && isStatic()) {
@@ -546,6 +548,16 @@ int GIEngine::nhc(PVA pvacur_) {
     Eigen::MatrixXd dz;
     // 观测噪声
     Eigen::MatrixXd R;
+    std::cout << std::format("{:10.3f} {:8.3f} {:8.3f} {:8.3f} {:8.3f}\n", imucur_.time, vb[0], vb[1], vb[2],
+                             imucur_.dtheta.norm() * R2D);
+    // Logging::printMatrix(Cnb);
+    // Logging::printMatrix(C1);
+    // Logging::printMatrix(C2);
+    // Logging::printMatrix(C3);
+    // Logging::printMatrix(T);
+    // Logging::printMatrix(T1);
+    // Logging::printMatrix(T2);
+    // Logging::printMatrix(T3);
     dz.resize(2, 1);
     R.resize(2, 2);
     R.setZero();
@@ -554,7 +566,7 @@ int GIEngine::nhc(PVA pvacur_) {
     int nv = 0;
     if (fabs(vb[0]) > 2) {
         for (int i = 1; i < 3; i++) {
-#if 1
+#if 0
             if (fabs(vb[i]) > 0.5) {
                 continue;
             }
@@ -568,9 +580,9 @@ int GIEngine::nhc(PVA pvacur_) {
             H.block(nv, V_ID, 1, 3)   = Cx.transpose();
             H.block(nv, PHI_ID, 1, 3) = Tx.transpose();
 
-            dz(nv) = 0 - vb[i];
+            dz(nv) = vb[i];
 
-            R(nv, nv) = pow(1.0, 2);
+            R(nv, nv) = pow(0.05, 2);
             nv++;
         }
     }
@@ -579,6 +591,7 @@ int GIEngine::nhc(PVA pvacur_) {
     if (nv > 1) {
         EKFUpdate(dz, H, R, KFFilterType::EKF);
         stateFeedback();
+        std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
     }
     return nv;
 }

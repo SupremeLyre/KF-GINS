@@ -390,17 +390,8 @@ def calcNavresultError(navresult_filepath, refresult_filepath, type):
         # refresult = ref()
 
     # 航向角平滑
-    for i in range(1, len(navresult)):
-        if navresult[i, 10] - navresult[i - 1, 10] < -180:
-            navresult[i:, 10] = navresult[i:, 10] + 360
-        if navresult[i, 10] - navresult[i - 1, 10] > 180:
-            navresult[i:, 10] = navresult[i:, 10] - 360
-
-    for i in range(1, len(refresult)):
-        if refresult[i, 10] - refresult[i - 1, 10] < -180:
-            refresult[i:, 10] = refresult[i:, 10] + 360
-        if refresult[i, 10] - refresult[i - 1, 10] > 180:
-            refresult[i:, 10] = refresult[i:, 10] - 360
+    navresult[:, 10] = np.unwrap(navresult[:, 10] * D2R) * R2D
+    refresult[:, 10] = np.unwrap(refresult[:, 10] * D2R) * R2D
 
     # 找到数据重合部分，参考结果内插到测试结果
     start_time = (

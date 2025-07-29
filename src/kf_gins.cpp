@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    std::cout << std::endl << "KF-GINS: An EKF-Based GNSS/INS Integrated Navigation System" << std::endl << std::endl;
+    // std::cout << std::endl << "KF-GINS: An EKF-Based GNSS/INS Integrated Navigation System" << std::endl << std::endl;
     auto ts = absl::Now();
 
     // 加载配置文件
@@ -173,10 +173,10 @@ int main(int argc, char *argv[]) {
 
     // 处理完毕
     // process finish
-    auto te = absl::Now();
-    std::cout << std::endl << std::endl << "KF-GINS Process Finish! ";
-    std::cout << "From " << starttime << " s to " << endtime << " s, total " << interval << " s!" << std::endl;
-    std::cout << "Cost " << absl::ToDoubleSeconds(te - ts) << " s in total" << std::endl;
+    // auto te = absl::Now();
+    // std::cout << std::endl << std::endl << "KF-GINS Process Finish! ";
+    // std::cout << "From " << starttime << " s to " << endtime << " s, total " << interval << " s!" << std::endl;
+    // std::cout << "Cost " << absl::ToDoubleSeconds(te - ts) << " s in total" << std::endl;
 
     return 0;
 }
@@ -520,9 +520,9 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
 
         percent = int((imu_cur.time - starttime) / interval * 100);
         if (percent - lastpercent >= 1) {
-            std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
-                                     percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2])
-                      << std::flush;
+            // std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
+            //                          percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2])
+            //           << std::flush;
             lastpercent = percent;
         }
     }
