@@ -154,8 +154,7 @@ void GIEngine::newImuProcess() {
     // 使用NHC添加约束
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
-    if (engineopt_.enable_nhc &&
-        ((imucur_.time > 188431 && imucur_.time < 188540))) {
+    if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
         int nv = nhc(pvacur_);
     }
     if (engineopt_.enable_zupt && isStatic()) {
@@ -566,8 +565,8 @@ int GIEngine::nhc(PVA pvacur_) {
     int nv = 0;
     if (fabs(vb[0]) > 2) {
         for (int i = 1; i < 3; i++) {
-#if 0
-            if (fabs(vb[i]) > 0.5) {
+#if 1
+            if (fabs(vb[i]) > 0.6) {
                 continue;
             }
             if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
@@ -582,12 +581,13 @@ int GIEngine::nhc(PVA pvacur_) {
 
             dz(nv) = vb[i];
 
-            R(nv, nv) = pow(0.05, 2);
+            // R(nv, nv) = pow(1, 2);
             nv++;
         }
     }
     // Logging::printMatrix(H);
-
+    R(0, 0) = pow(0.05, 2);
+    R(1, 1) = pow(2, 2);
     if (nv > 1) {
         EKFUpdate(dz, H, R, KFFilterType::EKF);
         stateFeedback();
