@@ -31,7 +31,7 @@ add_executable(${PROJECT_NAME} ${SOURCE})
 # Eigen3
 # find_package(Eigen3 REQUIRED)
 # include_directories(${EIGEN3_INCLUDE_DIR})
-include_directories(ThirdParty/eigen-3.4.90)
+include_directories(ThirdParty/eigen-3.4.0)
 
 # yaml-cpp-0.7.0
 # find_package(yaml-cpp REQUIRED)
