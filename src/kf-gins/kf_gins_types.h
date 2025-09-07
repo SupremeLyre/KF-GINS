@@ -39,6 +39,7 @@ typedef struct PVA {
     Eigen::Vector3d pos;
     Eigen::Vector3d vel;
     Attitude att;
+    uint8_t status; // 解算状态：四位二进制，低位至高位依次是：3-INS 2-ZUPT 1-NHC 0-GNSS
 } PVA;
 
 typedef struct ImuError {
@@ -54,6 +55,7 @@ typedef struct NavState {
     Eigen::Vector3d euler;
 
     ImuError imuerror;
+    uint8_t status;
 } NavState;
 
 typedef struct ImuNoise {

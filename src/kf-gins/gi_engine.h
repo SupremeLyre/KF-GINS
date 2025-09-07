@@ -267,6 +267,7 @@ private:
     // state ID and noise ID
     enum StateID { P_ID = 0, V_ID = 3, PHI_ID = 6, BG_ID = 9, BA_ID = 12, SG_ID = 15, SA_ID = 18 };
     enum NoiseID { VRW_ID = 0, ARW_ID = 3, BGSTD_ID = 6, BASTD_ID = 9, SGSTD_ID = 12, SASTD_ID = 15 };
+    double updatetime;
 };
 
 #endif // GI_ENGINE_H

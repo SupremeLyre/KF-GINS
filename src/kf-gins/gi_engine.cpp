@@ -78,6 +78,7 @@ void GIEngine::initialize(const NavState &initstate, const NavState &initstate_s
     pvacur_.att.euler = initstate.euler;
     pvacur_.att.cbn   = Rotation::euler2matrix(pvacur_.att.euler);
     pvacur_.att.qbn   = Rotation::euler2quaternion(pvacur_.att.euler);
+    pvacur_.status    = 0;
     // 初始化IMU误差
     // initialize imu error
     imuerror_ = initstate.imuerror;
@@ -104,12 +105,13 @@ void GIEngine::newImuProcess() {
 
     // 当前IMU时间作为系统当前状态时间,
     // set current IMU time as the current state time
-    week_      = imucur_.week;
-    timestamp_ = imucur_.time;
+    week_          = imucur_.week;
+    timestamp_     = imucur_.time;
+    pvacur_.status = 0;
 
     // 如果GNSS有效，则将更新时间设置为GNSS时间
     // set update time as the gnss time if gnssdata is valid
-    double updatetime = gnssdata_.isvalid ? gnssdata_.time : -1;
+    updatetime = gnssdata_.isvalid ? gnssdata_.time : -1;
 
     // 判断是否需要进行GNSS更新
     // determine if we should do GNSS update
@@ -124,6 +126,7 @@ void GIEngine::newImuProcess() {
         // gnssdata is near to the previous imudata, we should firstly do gnss update
         gnssUpdate(gnssdata_);
         stateFeedback();
+        pvacur_.status |= 0b0001;
         pvapre_ = pvacur_;
         insPropagation(imupre_, imucur_);
     } else if (res == 2) {
@@ -132,6 +135,7 @@ void GIEngine::newImuProcess() {
         insPropagation(imupre_, imucur_);
         gnssUpdate(gnssdata_);
         stateFeedback();
+        pvacur_.status |= 0b0001;
     } else {
         // GNSS数据在两个IMU数据之间(不靠近任何一个), 将当前IMU内插到整秒时刻
         // gnssdata is between the two imudata, we interpolate current imudata to gnss time
@@ -145,20 +149,12 @@ void GIEngine::newImuProcess() {
         // do GNSS position update at the whole second and feedback system states
         gnssUpdate(gnssdata_);
         stateFeedback();
+        pvacur_.status |= 0b0001;
 
         // 对后一半IMU进行状态传播
         // propagate navigation state for the second half imudata
         pvapre_ = pvacur_;
         insPropagation(midimu, imucur_);
-    }
-    // 使用NHC添加约束
-    // add constraint using NHC
-    // || (imucur_.time > 188723 && imucur_.time < 188771)
-    if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
-        int nv = nhc(pvacur_);
-    }
-    if (engineopt_.enable_zupt && isStatic()) {
-        int nv = zupt(pvacur_);
     }
     // 检查协方差矩阵对角线元素
     // check diagonal elements of current covariance matrix
@@ -194,7 +190,7 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // IMU状态更新(机械编排算法)
     // update imustate(mechanization)
     INSMech::insMech(pvapre_, pvacur_, imupre, imucur);
-
+    pvacur_.status |= 0b1000;
     // 系统噪声传播，姿态误差采用phi角误差模型
     // system noise propagate, phi-angle error model for attitude error
     Eigen::MatrixXd Phi, F, Qd, G;
@@ -323,6 +319,18 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // EKF预测传播系统协方差和系统误差状态
     // do EKF predict to propagate covariance and error state
     EKFPredict(Phi, Qd);
+    // 使用NHC添加约束
+    // add constraint using NHC
+    // || (imucur_.time > 188723 && imucur_.time < 188771)
+    // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
+    if (engineopt_.enable_nhc && fabs(imucur_.time - updatetime) > 1.0) {
+        int nv = nhc(pvacur_);
+        pvacur_.status |= 0b0010;
+    }
+    if (engineopt_.enable_zupt && isStatic()) {
+        int nv = zupt(pvacur_);
+        pvacur_.status |= 0b0100;
+    }
 }
 
 void GIEngine::gnssUpdate(GNSS &gnssdata) {
@@ -524,7 +532,7 @@ NavState GIEngine::getNavState() {
     state.vel      = pvacur_.vel;
     state.euler    = pvacur_.att.euler;
     state.imuerror = imuerror_;
-
+    state.status   = pvacur_.status;
     return state;
 }
 int GIEngine::nhc(PVA pvacur_) {
@@ -547,8 +555,8 @@ int GIEngine::nhc(PVA pvacur_) {
     Eigen::MatrixXd dz;
     // 观测噪声
     Eigen::MatrixXd R;
-    std::cout << std::format("{:10.3f} {:8.3f} {:8.3f} {:8.3f} {:8.3f}\n", imucur_.time, vb[0], vb[1], vb[2],
-                             imucur_.dtheta.norm() * R2D);
+    // std::cout << std::format("{:10.3f} {:8.3f} {:8.3f} {:8.3f} {:8.3f}\n", imucur_.time, vb[0], vb[1], vb[2],
+    //                          imucur_.dtheta.norm() * R2D);
     // Logging::printMatrix(Cnb);
     // Logging::printMatrix(C1);
     // Logging::printMatrix(C2);
@@ -586,12 +594,12 @@ int GIEngine::nhc(PVA pvacur_) {
         }
     }
     // Logging::printMatrix(H);
-    R(0, 0) = pow(0.05, 2);
+    R(0, 0) = pow(0.15, 2);
     R(1, 1) = pow(2, 2);
     if (nv > 1) {
         EKFUpdate(dz, H, R, KFFilterType::EKF);
         stateFeedback();
-        std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
+        // std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
     }
     return nv;
 }
@@ -677,6 +685,9 @@ bool GIEngine::isStatic() {
             isZupt = true;
         }
         //
+        //
+    }
+    if (isZupt) {
         // LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time) << std::endl;
     }
     return isZupt;

@@ -438,8 +438,8 @@ if __name__ == "__main__":
 
     # path = './dataset/20230113/pppimu'
     # path = './dataset/20241101/posimu'
-    # path = "./dataset/20250103/pppimu"
-    path = "./dataset/20250318/pppimu"
+    path = "./dataset/20250103/pppimu"
+    # path = "./dataset/20250318/pppimu"
     # path = "./dataset/example"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"
@@ -448,7 +448,7 @@ if __name__ == "__main__":
     # 导航结果
     # plotNavresult(navresult_filepath,0)
     # 计算并绘制导航误差
-    plotNavError(navresult_filepath, refresult_filepath, 0)
+    # plotNavError(navresult_filepath, refresult_filepath, 0)
     # plotNavError(navresult_filepath, refresult_filepath, 2)
 
 

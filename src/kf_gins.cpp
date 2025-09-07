@@ -38,7 +38,8 @@
 #include "fileio/respppfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 #include "kf-gins/kf_gins_types.h"
-
+#define EIGEN_USE_BLAS
+#define EIGEN_USE_LAPACKE
 bool loadConfig(YAML::Node &config, GINSOptions &options);
 void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile);
 void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile);
@@ -56,7 +57,8 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    // std::cout << std::endl << "KF-GINS: An EKF-Based GNSS/INS Integrated Navigation System" << std::endl << std::endl;
+    // std::cout << std::endl << "KF-GINS: An EKF-Based GNSS/INS Integrated Navigation System" << std::endl <<
+    // std::endl;
     auto ts = absl::Now();
 
     // 加载配置文件
@@ -173,10 +175,10 @@ int main(int argc, char *argv[]) {
 
     // 处理完毕
     // process finish
-    // auto te = absl::Now();
-    // std::cout << std::endl << std::endl << "KF-GINS Process Finish! ";
-    // std::cout << "From " << starttime << " s to " << endtime << " s, total " << interval << " s!" << std::endl;
-    // std::cout << "Cost " << absl::ToDoubleSeconds(te - ts) << " s in total" << std::endl;
+    auto te = absl::Now();
+    std::cout << std::endl << std::endl << "KF-GINS Process Finish! ";
+    std::cout << "From " << starttime << " s to " << endtime << " s, total " << interval << " s!" << std::endl;
+    std::cout << "Cost " << absl::ToDoubleSeconds(te - ts) << " s in total" << std::endl;
 
     return 0;
 }
@@ -375,12 +377,13 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
     result.push_back(navstate.euler[0] * R2D);
     result.push_back(navstate.euler[1] * R2D);
     result.push_back(navstate.euler[2] * R2D);
+    result.push_back(navstate.status);
     navfile.dump(result);
 #else
     navfile.fstream() << std::format("{:4} {:10.4f} {:14.9f} {:14.9f} {:10.4f} {:3d} {:3d} {:8.4f} {:8.4f} {:8.4f} "
                                      "{:8.4f} {:8.4f} {:8.4f} {:6.2f} {:6.1f} {:10.5f} {:10.5f} {:10.5f} {:9.5f} "
                                      "{:8.5f} {:8.5f} {:8.5f} {:8.5f} {:8.5f} {:13.9f} {:13.9f} {:13.9f}\n",
-                                     week, time, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2], 1, 0,
+                                     week, time, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2], navstate.status, 0,
                                      sqrt(cov(0, 0)), sqrt(cov(1, 1)), sqrt(cov(2, 2)), 0.0, 0.0, 0.0, 0.0, 0.0,
                                      navstate.vel[1], navstate.vel[0], -navstate.vel[2], sqrt(cov(3, 3)),
                                      sqrt(cov(4, 4)), sqrt(cov(5, 5)), 0.0, 0.0, 0.0, navstate.euler[0] * R2D,
@@ -520,9 +523,9 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
 
         percent = int((imu_cur.time - starttime) / interval * 100);
         if (percent - lastpercent >= 1) {
-            // std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
-            //                          percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2])
-            //           << std::flush;
+            std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
+                                     percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2])
+                      << std::flush;
             lastpercent = percent;
         }
     }
