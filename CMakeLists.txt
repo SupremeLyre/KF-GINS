@@ -17,6 +17,7 @@ endif()
 file(GLOB_RECURSE SOURCE
     src/kf_gins.cpp
     src/common/time.cc
+    src/common/crc32.cc
     src/fileio/fileloader.cc
     src/fileio/filesaver.cc
     src/fileio/adisfileloader.cc

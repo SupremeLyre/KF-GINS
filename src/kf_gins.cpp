@@ -21,6 +21,7 @@
  */
 
 #include "common/angle.h"
+#include "fileio/adisbinaryloader.hpp"
 #include "fileio/adisfileloader.hpp"
 #include "fileio/filesaver.h"
 #include "fileio/gnssfileloader.h"
@@ -35,6 +36,7 @@
 #include "common/logging.h"
 #include "fileio/posfileloader.hpp"
 #include "fileio/pppfileloader.hpp"
+#include "fileio/pvtfileloader.hpp"
 #include "fileio/respppfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 #include "kf-gins/kf_gins_types.h"
@@ -137,6 +139,7 @@ int main(int argc, char *argv[]) {
     GIEngine giengine(options);
     GNSS gnss;
     IMU imu_cur;
+
     if (newtype == 1) {
         PPPFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
@@ -154,6 +157,14 @@ int main(int argc, char *argv[]) {
     } else if (newtype == 3) {
         ResPppFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
+        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                    timestamp, navstate, cov, interval, percent, lastpercent)) {
+            return -1;
+        }
+    } else if (newtype == 4) {
+        PvtFileLoader gnssfile(gnsspath);
+        // ResPppFileLoader gnssfile(gnsspath);
+        AdisBinaryLoader imufile(imupath);
         if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
@@ -350,6 +361,13 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         return false;
     }
     options.engineopt = opt1;
+    try {
+        options.processNoise_pos = config["processnoise"]["pos"].as<double>();
+        options.processNoise_vel = config["processnoise"]["vel"].as<double>();
+    } catch (YAML::Exception &exception) {
+        std::cout << "Missing process noise configuration!" << std::endl;
+        return false;
+    }
     return true;
 }
 
@@ -362,51 +380,55 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
 
     std::vector<double> result;
 
-// 保存导航结果
-// save navigation result
+    // 保存导航结果
+    // save navigation result
+    if (1) {
 #if 1
-    result.clear();
-    result.push_back(week);
-    result.push_back(time);
-    result.push_back(navstate.pos[0] * R2D);
-    result.push_back(navstate.pos[1] * R2D);
-    result.push_back(navstate.pos[2]);
-    result.push_back(navstate.vel[0]);
-    result.push_back(navstate.vel[1]);
-    result.push_back(navstate.vel[2]);
-    result.push_back(navstate.euler[0] * R2D);
-    result.push_back(navstate.euler[1] * R2D);
-    result.push_back(navstate.euler[2] * R2D);
-    result.push_back(navstate.status);
-    navfile.dump(result);
+
+        result.clear();
+        result.push_back(week);
+        result.push_back(time);
+        result.push_back(navstate.pos[0] * R2D);
+        result.push_back(navstate.pos[1] * R2D);
+        result.push_back(navstate.pos[2]);
+        result.push_back(navstate.vel[0]);
+        result.push_back(navstate.vel[1]);
+        result.push_back(navstate.vel[2]);
+        result.push_back(navstate.euler[0] * R2D);
+        result.push_back(navstate.euler[1] * R2D);
+        result.push_back(navstate.euler[2] * R2D);
+        result.push_back(navstate.status);
+        navfile.dump(result);
+
 #else
-    navfile.fstream() << std::format("{:4} {:10.4f} {:14.9f} {:14.9f} {:10.4f} {:3d} {:3d} {:8.4f} {:8.4f} {:8.4f} "
-                                     "{:8.4f} {:8.4f} {:8.4f} {:6.2f} {:6.1f} {:10.5f} {:10.5f} {:10.5f} {:9.5f} "
-                                     "{:8.5f} {:8.5f} {:8.5f} {:8.5f} {:8.5f} {:13.9f} {:13.9f} {:13.9f}\n",
-                                     week, time, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2], navstate.status, 0,
-                                     sqrt(cov(0, 0)), sqrt(cov(1, 1)), sqrt(cov(2, 2)), 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     navstate.vel[1], navstate.vel[0], -navstate.vel[2], sqrt(cov(3, 3)),
-                                     sqrt(cov(4, 4)), sqrt(cov(5, 5)), 0.0, 0.0, 0.0, navstate.euler[0] * R2D,
-                                     navstate.euler[1] * R2D, navstate.euler[2] * R2D);
+        navfile.fstream() << std::format("{:4} {:10.4f} {:14.9f} {:14.9f} {:10.4f} {:3d} {:3d} {:8.4f} {:8.4f} {:8.4f} "
+                                         "{:8.4f} {:8.4f} {:8.4f} {:6.2f} {:6.1f} {:10.5f} {:10.5f} {:10.5f} {:9.5f} "
+                                         "{:8.5f} {:8.5f} {:8.5f} {:8.5f} {:8.5f} {:13.9f} {:13.9f} {:13.9f}\n",
+                                         week, time, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2],
+                                         navstate.status, 0, sqrt(cov(0, 0)), sqrt(cov(1, 1)), sqrt(cov(2, 2)), 0.0,
+                                         0.0, 0.0, 0.0, 0.0, navstate.vel[1], navstate.vel[0], -navstate.vel[2],
+                                         sqrt(cov(3, 3)), sqrt(cov(4, 4)), sqrt(cov(5, 5)), 0.0, 0.0, 0.0,
+                                         navstate.euler[0] * R2D, navstate.euler[1] * R2D, navstate.euler[2] * R2D);
 #endif
-    // 保存IMU误差
-    // save IMU error
-    auto imuerr = navstate.imuerror;
-    result.clear();
-    result.push_back(time);
-    result.push_back(imuerr.gyrbias[0] * R2D * 3600);
-    result.push_back(imuerr.gyrbias[1] * R2D * 3600);
-    result.push_back(imuerr.gyrbias[2] * R2D * 3600);
-    result.push_back(imuerr.accbias[0] * 1e5);
-    result.push_back(imuerr.accbias[1] * 1e5);
-    result.push_back(imuerr.accbias[2] * 1e5);
-    result.push_back(imuerr.gyrscale[0] * 1e6);
-    result.push_back(imuerr.gyrscale[1] * 1e6);
-    result.push_back(imuerr.gyrscale[2] * 1e6);
-    result.push_back(imuerr.accscale[0] * 1e6);
-    result.push_back(imuerr.accscale[1] * 1e6);
-    result.push_back(imuerr.accscale[2] * 1e6);
-    imuerrfile.dump(result);
+        // 保存IMU误差
+        // save IMU error
+        auto imuerr = navstate.imuerror;
+        result.clear();
+        result.push_back(time);
+        result.push_back(imuerr.gyrbias[0] * R2D * 3600);
+        result.push_back(imuerr.gyrbias[1] * R2D * 3600);
+        result.push_back(imuerr.gyrbias[2] * R2D * 3600);
+        result.push_back(imuerr.accbias[0] * 1e5);
+        result.push_back(imuerr.accbias[1] * 1e5);
+        result.push_back(imuerr.accbias[2] * 1e5);
+        result.push_back(imuerr.gyrscale[0] * 1e6);
+        result.push_back(imuerr.gyrscale[1] * 1e6);
+        result.push_back(imuerr.gyrscale[2] * 1e6);
+        result.push_back(imuerr.accscale[0] * 1e6);
+        result.push_back(imuerr.accscale[1] * 1e6);
+        result.push_back(imuerr.accscale[2] * 1e6);
+        imuerrfile.dump(result);
+    }
 }
 
 /**

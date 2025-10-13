@@ -22,8 +22,8 @@
 
 #ifndef GI_ENGINE_H
 #define GI_ENGINE_H
-#include <deque>
 #include <Eigen/Dense>
+#include <deque>
 
 #include "common/types.h"
 
@@ -45,11 +45,11 @@ public:
      *                        if compensate imu error to new imudata
      * */
     void addImuData(const IMU &imu, bool compensate = false) {
-        IMU imu_ = imu;
+        IMU imu_    = imu;
         imu_.dtheta = C_imu_body * imu_.dtheta;
-        imu_.dvel = C_imu_body * imu_.dvel;
-        imupre_ = imucur_;
-        imucur_ = imu_;
+        imu_.dvel   = C_imu_body * imu_.dvel;
+        imupre_     = imucur_;
+        imucur_     = imu_;
 
         if (compensate) {
             imuCompensate(imucur_);
@@ -132,6 +132,7 @@ public:
     int nhc(PVA pvacur_);
     int zupt(PVA pvacur_);
     bool isStatic();
+    bool isTurning();
 
 private:
     /**
@@ -142,7 +143,7 @@ private:
      * @param [in] initstate_std 初始状态标准差
      *                           initial state std
      * */
-    enum class KFFilterType { EKF, Huber, IGG3 };
+    enum class KFFilterType { EKF, Huber, IGG3, Denish };
     void initialize(const NavState &initstate, const NavState &initstate_std);
 
     /**
@@ -265,7 +266,15 @@ private:
     const int NOISERANK = 18;
     // 状态ID和噪声ID
     // state ID and noise ID
-    enum StateID { P_ID = 0, V_ID = 3, PHI_ID = 6, BG_ID = 9, BA_ID = 12, SG_ID = 15, SA_ID = 18 };
+    enum StateID {
+        P_ID   = 0,
+        V_ID   = 3,
+        PHI_ID = 6,
+        BG_ID  = 9,
+        BA_ID  = 12,
+        SG_ID  = 15,
+        SA_ID  = 18,
+    };
     enum NoiseID { VRW_ID = 0, ARW_ID = 3, BGSTD_ID = 6, BASTD_ID = 9, SGSTD_ID = 12, SASTD_ID = 15 };
     double updatetime;
 };

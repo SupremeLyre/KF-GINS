@@ -237,6 +237,7 @@ def plotSTD(std_filepath):
     plt.title("Position STD")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/pos_std.png", dpi=300)
 
     plt.figure("velocity std")
     plt.plot(std[:, 0], std[:, 4:7])
@@ -246,6 +247,7 @@ def plotSTD(std_filepath):
     plt.title("Velocity STD")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/vel_std.png", dpi=300)
 
     plt.figure("attitude std")
     plt.plot(std[:, 0], std[:, 7:10])
@@ -255,6 +257,7 @@ def plotSTD(std_filepath):
     plt.title("Attitude STD")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/att_std.png", dpi=300)
 
     plt.figure("gyrobias std")
     plt.plot(std[:, 0], std[:, 10:13])
@@ -264,6 +267,7 @@ def plotSTD(std_filepath):
     plt.title("Gyroscope Bias STD")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/gyro_bias_std.png", dpi=300)
 
     plt.figure("accelbias std")
     plt.plot(std[:, 0], std[:, 13:16])
@@ -273,6 +277,7 @@ def plotSTD(std_filepath):
     plt.title("Accelerometer Bias STD")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("figs/accel_bias_std.png", dpi=300)
 
     plt.figure("gyroscale std")
     plt.plot(std[:, 0], std[:, 16:19])
@@ -292,7 +297,7 @@ def plotSTD(std_filepath):
     plt.grid()
     plt.tight_layout()
 
-    plt.show()
+    # plt.show()
 
 
 def calcNavresultError(navresult_filepath, refresult_filepath, type):
@@ -390,8 +395,8 @@ def calcNavresultError(navresult_filepath, refresult_filepath, type):
         # refresult = ref()
 
     # 航向角平滑
-    navresult[:, 10] = np.unwrap(navresult[:, 10] * D2R) * R2D
-    refresult[:, 10] = np.unwrap(refresult[:, 10] * D2R) * R2D
+    navresult[:, 10] = np.unwrap(navresult[:, 10] * D2R, period=2*np.pi) * R2D
+    refresult[:, 10] = np.unwrap(refresult[:, 10] * D2R, period=2*np.pi) * R2D - 1080
 
     # 找到数据重合部分，参考结果内插到测试结果
     start_time = (
@@ -438,8 +443,9 @@ if __name__ == "__main__":
 
     # path = './dataset/20230113/pppimu'
     # path = './dataset/20241101/posimu'
-    path = "./dataset/20250103/pppimu"
+    # path = "./dataset/20250103/pppimu"
     # path = "./dataset/20250318/pppimu"
+    path = "./dataset/20250915/pppimu"
     # path = "./dataset/example"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"
@@ -448,7 +454,7 @@ if __name__ == "__main__":
     # 导航结果
     # plotNavresult(navresult_filepath,0)
     # 计算并绘制导航误差
-    # plotNavError(navresult_filepath, refresult_filepath, 0)
+    plotNavError(navresult_filepath, refresult_filepath, 0)
     # plotNavError(navresult_filepath, refresult_filepath, 2)
 
 
@@ -458,4 +464,4 @@ if __name__ == "__main__":
 
     # 估计的导航状态标准差和IMU误差标准差
     std_filepath = path + "/KF_GINS_STD.txt"
-    # plotSTD(std_filepath)
+    plotSTD(std_filepath)

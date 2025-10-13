@@ -41,6 +41,7 @@ bool AdisFileLoader::load_() {
     sscanf(line.c_str(), "%c,%lf,%d,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%d", &temper.type, &temper.tow, &temper.week,
            &temper.leap, &temper.temprature, &temper.acc[0], &temper.acc[1], &temper.acc[2], &temper.gyr[0],
            &temper.gyr[1], &temper.gyr[2], &temper.stamp, &temper.cap);
+    // temper.tow--;
 #else
     sscanf(line.c_str(), "%c,%lf,%d,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%d", &temper.type, &temper.tow, &temper.week,
            &temper.leap, &temper.temprature, &temper.gyr[0], &temper.gyr[1], &temper.gyr[2], &temper.acc[0],

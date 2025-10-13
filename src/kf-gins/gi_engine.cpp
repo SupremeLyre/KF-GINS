@@ -29,10 +29,12 @@
 #include "kf-gins/kf_gins_types.h"
 #include <Eigen/Eigen>
 #include <format>
+#include <glog/logging.h>
 
 GIEngine::GIEngine(GINSOptions &options) {
 
     this->options_ = options;
+    this->engineopt_ = options.engineopt;
     // options_.print_options();
     week_      = 0;
     timestamp_ = 0;
@@ -65,7 +67,6 @@ GIEngine::GIEngine(GINSOptions &options) {
     // 设置系统状态(位置、速度、姿态和IMU误差)初值和初始协方差
     // set initial state (position, velocity, attitude and IMU error) and covariance
     initialize(options_.initstate, options_.initstate_std);
-    engineopt_ = options_.engineopt;
     C_imu_body = Rotation::euler2matrix(options_.imu_misalign);
 }
 
@@ -116,7 +117,13 @@ void GIEngine::newImuProcess() {
     // 判断是否需要进行GNSS更新
     // determine if we should do GNSS update
     int res = isToUpdate(imupre_.time, imucur_.time, updatetime);
-
+    if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= options_.engineopt.zuptopt.interval) {
+        imuwindow_.push_back(imucur_);
+    } else {
+        // 退一个头部元素，在尾部插入一个新元素
+        imuwindow_.pop_front();
+        imuwindow_.push_back(imucur_);
+    }
     if (res == 0) {
         // 只传播导航状态
         // only propagate navigation state
@@ -175,14 +182,21 @@ void GIEngine::imuCompensate(IMU &imu) {
 
     // 补偿IMU比例因子
     // compensate the imu scale
-    Eigen::Vector3d gyrscale, accscale;
-    gyrscale   = Eigen::Vector3d::Ones() + imuerror_.gyrscale;
-    accscale   = Eigen::Vector3d::Ones() + imuerror_.accscale;
-    imu.dtheta = imu.dtheta.cwiseProduct(gyrscale.cwiseInverse());
-    imu.dvel   = imu.dvel.cwiseProduct(accscale.cwiseInverse());
+    if (engineopt_.estimate_scale) {
+        Eigen::Vector3d gyrscale, accscale;
+        gyrscale   = Eigen::Vector3d::Ones() + imuerror_.gyrscale;
+        accscale   = Eigen::Vector3d::Ones() + imuerror_.accscale;
+        imu.dtheta = imu.dtheta.cwiseProduct(gyrscale.cwiseInverse());
+        imu.dvel   = imu.dvel.cwiseProduct(accscale.cwiseInverse());
+    }
 }
 
 void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
+
+    if (engineopt_.enable_zupt && isStatic()) {
+        int nv = zupt(pvacur_);
+        pvacur_.status |= 0b0100;
+    }
 
     // 对当前IMU数据(imucur)补偿误差, 上一IMU数据(imupre)已经补偿过了
     // compensate imu error to 'imucur', 'imupre' has been compensated
@@ -323,13 +337,10 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
     // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
-    if (engineopt_.enable_nhc && fabs(imucur_.time - updatetime) > 1.0) {
+        // if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 5.0)) {
+        if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
         pvacur_.status |= 0b0010;
-    }
-    if (engineopt_.enable_zupt && isStatic()) {
-        int nv = zupt(pvacur_);
-        pvacur_.status |= 0b0100;
     }
 }
 
@@ -366,7 +377,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
     if (engineopt_.enable_gnss_pos) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::EKF);
+        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
     }
 
     // GNSS速度观测矩阵
@@ -391,7 +402,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     Eigen::MatrixXd dz_vel;
     dz_vel = antenna_vel - gnssdata.vel;
     if (engineopt_.enable_gnss_vel) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::EKF);
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber);
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
@@ -426,8 +437,11 @@ void GIEngine::EKFPredict(Eigen::MatrixXd &Phi, Eigen::MatrixXd &Qd) {
 
     // 传播系统协方差和误差状态
     // propagate system covariance and error state
+    Qd.block(P_ID, P_ID, 3, 3).diagonal().array() += options_.processNoise_pos;
+    Qd.block(V_ID, V_ID, 3, 3).diagonal().array() += options_.processNoise_vel;
     Cov_ = Phi * Cov_ * Phi.transpose() + Qd;
-    dx_  = Phi * dx_;
+    // Logging::printMatrix(Cov_);
+    dx_ = Phi * dx_;
 }
 
 void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType type) {
@@ -440,16 +454,16 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
     Eigen::MatrixXd adj_R = R;
     switch (type) {
         case KFFilterType::Huber: {
-            double k0 = 2.0;
+            double k0 = 1.5;
 
             Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
             for (int i = 0; i < dz.rows(); i++) {
                 double sigma = sqrt((HPHt + R)(i, i));
                 if (sigma < 1e-12)
                     continue;
-                double v_normalized = dz(i, 0) / sigma;
-                if (fabs(v_normalized) > k0) {
-                    adj_R(i, i) *= fabs(v_normalized / k0); // 调整等价权
+                double v_normalized = fabs(dz(i, 0)) / sigma;
+                if (v_normalized > k0) {
+                    adj_R(i, i) *= v_normalized / k0; // 调整等价权
                 }
             }
             break;
@@ -458,6 +472,37 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
             break;
         }
         case KFFilterType::IGG3: {
+            double k0 = 2.0, k1 = 8.0;
+            Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
+            for (int i = 0; i < dz.rows(); i++) {
+                double sigma = sqrt((HPHt + R)(i, i));
+                if (sigma < 1e-12)
+                    continue;
+                double v_normalized = fabs(dz(i, 0)) / sigma;
+                // LOG(INFO) << "v_normalized: " << v_normalized << std::endl;
+                if (v_normalized <= k0) {
+                    adj_R(i, i) *= 1; // 调整等价权
+                } else if (v_normalized < k1) {
+                    adj_R(i, i) *= abs(v_normalized / k0) * pow(((k1 - k0) / (k1 - v_normalized)), 2); // 调整等价权
+                } else {
+                    adj_R(i, i) *= 10;
+                }
+            }
+            break;
+        }
+        case KFFilterType::Denish: {
+            double k0            = 2.0;
+            Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
+            for (int i = 0; i < dz.rows(); i++) {
+                double sigma = sqrt((HPHt + R)(i, i));
+                if (sigma < 1e-12)
+                    continue;
+                double v_normalized = fabs(dz(i, 0)) / sigma;
+                if (v_normalized > k0) {
+                    adj_R(i, i) *= log(pow(v_normalized / k0, 2) - 1); // 调整等价权
+                }
+            }
+            break;
             break;
         }
     }
@@ -574,7 +619,7 @@ int GIEngine::nhc(PVA pvacur_) {
     if (fabs(vb[0]) > 2) {
         for (int i = 1; i < 3; i++) {
 #if 1
-            if (fabs(vb[i]) > 0.6) {
+            if (fabs(vb[i]) > 0.5) {
                 continue;
             }
             if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
@@ -593,9 +638,20 @@ int GIEngine::nhc(PVA pvacur_) {
             nv++;
         }
     }
-    // Logging::printMatrix(H);
-    R(0, 0) = pow(0.15, 2);
+// Logging::printMatrix(H);
+#if 0
+    if (isTurning()) {
+        R(0, 0) = pow(0.05, 2);
+        R(1, 1) = pow(2, 2);
+    } else {
+        R(0, 0) = pow(100, 2);
+        R(1, 1) = pow(100, 2);
+    }
+#else
+    R(0, 0) = pow(0.05, 2);
     R(1, 1) = pow(2, 2);
+#endif
+
     if (nv > 1) {
         EKFUpdate(dz, H, R, KFFilterType::EKF);
         stateFeedback();
@@ -624,9 +680,9 @@ int GIEngine::zupt(PVA pvacur_) {
     dz(0)   = T1(0) * vn(0) + T1(1) * vn(1) + T1(2) * vn(2);
     dz(1)   = T2(0) * vn(0) + T2(1) * vn(1) + T2(2) * vn(2);
     dz(2)   = T3(0) * vn(0) + T3(1) * vn(1) + T3(2) * vn(2);
-    R(0, 0) = pow(0.1, 2);
-    R(1, 1) = pow(0.1, 2);
-    R(2, 2) = pow(0.1, 2);
+    R(0, 0) = pow(1, 2);
+    R(1, 1) = pow(1, 2);
+    R(2, 2) = pow(1, 2);
     EKFUpdate(dz, H, R, KFFilterType::EKF);
     stateFeedback();
     return 0;
@@ -647,11 +703,8 @@ bool GIEngine::isStatic() {
     }
     // 利用双向队列存储imu原始数据，用于进行静止判断
     if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= options_.engineopt.zuptopt.interval) {
-        imuwindow_.push_back(imucur_);
+        return false;
     } else {
-        // 退一个头部元素，在尾部插入一个新元素
-        imuwindow_.pop_front();
-        imuwindow_.push_back(imucur_);
         // 计算IMU数据的平均加速度和加速度标准差
         for (auto imu : imuwindow_) {
             accmean += imu.dvel / imu.dt;
@@ -691,4 +744,25 @@ bool GIEngine::isStatic() {
         // LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time) << std::endl;
     }
     return isZupt;
+}
+bool GIEngine::isTurning() {
+    bool isTurn{false};
+    if (imuwindow_.size() < 100) {
+        return isTurn;
+    }
+    Eigen::Vector3d gyro{0.0, 0.0, 0.0};
+    Eigen::Vector3d angle{0.0, 0.0, 0.0};
+    for (int i = 0; i < 100; i++) {
+        angle +=
+            imuwindow_[imuwindow_.size() - 1 - i].dtheta - imuerror_.gyrbias * imuwindow_[imuwindow_.size() - 1 - i].dt;
+        gyro +=
+            imuwindow_[imuwindow_.size() - 1 - i].dtheta / imuwindow_[imuwindow_.size() - 1 - i].dt - imuerror_.gyrbias;
+    }
+    if ((fabs(gyro[2]) > 4 * D2R) || fabs(angle[2]) > 30 * D2R) {
+        isTurn = true;
+        // std::cout << "It's turning now:"
+        //           << std::format("{:.4f} {:.4f} {:.4f}", imucur_.time, fabs(gyro[2]) * R2D, fabs(angle[2]) * R2D)
+        //           << std::endl;
+    }
+    return isTurn;
 }
