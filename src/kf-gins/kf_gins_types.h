@@ -156,7 +156,6 @@ typedef struct GINSOptions {
     GIEngineOpt engineopt;
     Eigen::Vector3d imu_misalign;
     double processNoise_pos; // 位置过程噪声 [m]
-    double processNoise_vel; // 速度过程噪声 [m/s]
 } GINSOptions;
 
 #endif // KF_GINS_TYPES_H

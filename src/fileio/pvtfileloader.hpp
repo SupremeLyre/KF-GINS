@@ -27,7 +27,7 @@ public:
     const GNSS &next() {
         if (load_()) {
             gnss_.week = temper.week;
-            gnss_.time = --temper.sow;
+            gnss_.time = temper.sow;
             gnss_.blh  = {temper.blh[0] * D2R, temper.blh[1] * D2R, temper.blh[2] + temper.undulation};
             gnss_.std  = {temper.std[0], temper.std[1], temper.std[2]};
             gnss_.vel  = {temper.vel[0], temper.vel[1], -temper.vel[2]};
@@ -47,7 +47,7 @@ private:
                &temper.sow, &temper.week, &temper.leap, &temper.status, &temper.nsat, &temper.blh[1], &temper.std[1],
                &temper.blh[0], &temper.std[0], &temper.blh[2], &temper.std[2], &temper.undulation, &temper.vel[1],
                &temper.vstd[1], &temper.vel[0], &temper.vstd[0], &temper.vel[2], &temper.vstd[2]);
-        if (temper.status == 4 || temper.status == 3) {
+        if (temper.status >=16 && temper.status <= 50) {
             return true;
         } else {
             return false;

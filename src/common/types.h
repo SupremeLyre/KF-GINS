@@ -47,6 +47,8 @@ typedef struct IMU {
 
     Vector3d dtheta;
     Vector3d dvel;
+    Vector3d accel;
+    Vector3d omega;
 
     double odovel;
 } IMU;

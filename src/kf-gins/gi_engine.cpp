@@ -33,7 +33,7 @@
 
 GIEngine::GIEngine(GINSOptions &options) {
 
-    this->options_ = options;
+    this->options_   = options;
     this->engineopt_ = options.engineopt;
     // options_.print_options();
     week_      = 0;
@@ -74,19 +74,19 @@ void GIEngine::initialize(const NavState &initstate, const NavState &initstate_s
 
     // 初始化位置、速度、姿态
     // initialize position, velocity and attitude
-    pvacur_.pos       = initstate.pos;
-    pvacur_.vel       = initstate.vel;
-    pvacur_.att.euler = initstate.euler;
-    pvacur_.att.cbn   = Rotation::euler2matrix(pvacur_.att.euler);
-    pvacur_.att.qbn   = Rotation::euler2quaternion(pvacur_.att.euler);
-    pvacur_.status    = 0;
+    // pvacur_.pos       = initstate.pos;
+    // pvacur_.vel       = initstate.vel;
+    // pvacur_.att.euler = initstate.euler;
+    // pvacur_.att.cbn   = Rotation::euler2matrix(pvacur_.att.euler);
+    // pvacur_.att.qbn   = Rotation::euler2quaternion(pvacur_.att.euler);
+    pvacur_.status = 0;
     // 初始化IMU误差
     // initialize imu error
-    imuerror_ = initstate.imuerror;
+    // imuerror_ = initstate.imuerror;
 
     // 给上一时刻状态赋同样的初值
     // set the same value to the previous state
-    pvapre_ = pvacur_;
+    // pvapre_ = pvacur_;
 
     // 初始化协方差
     // initialize covariance
@@ -117,13 +117,7 @@ void GIEngine::newImuProcess() {
     // 判断是否需要进行GNSS更新
     // determine if we should do GNSS update
     int res = isToUpdate(imupre_.time, imucur_.time, updatetime);
-    if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= options_.engineopt.zuptopt.interval) {
-        imuwindow_.push_back(imucur_);
-    } else {
-        // 退一个头部元素，在尾部插入一个新元素
-        imuwindow_.pop_front();
-        imuwindow_.push_back(imucur_);
-    }
+
     if (res == 0) {
         // 只传播导航状态
         // only propagate navigation state
@@ -193,7 +187,7 @@ void GIEngine::imuCompensate(IMU &imu) {
 
 void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
 
-    if (engineopt_.enable_zupt && isStatic()) {
+    if (engineopt_.enable_zupt && isStatic(average)) {
         int nv = zupt(pvacur_);
         pvacur_.status |= 0b0100;
     }
@@ -227,9 +221,8 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     double gravity;
     rmrn    = Earth::meridianPrimeVerticalRadius(pvapre_.pos[0]);
     gravity = Earth::gravity(pvapre_.pos);
-    wie_n << WGS84_WIE * cos(pvapre_.pos[0]), 0, -WGS84_WIE * sin(pvapre_.pos[0]);
-    wen_n << pvapre_.vel[1] / (rmrn[1] + pvapre_.pos[2]), -pvapre_.vel[0] / (rmrn[0] + pvapre_.pos[2]),
-        -pvapre_.vel[1] * tan(pvapre_.pos[0]) / (rmrn[1] + pvapre_.pos[2]);
+    wie_n   = Earth::wien(pvapre_.pos[0]);
+    wen_n   = Earth::wenn(rmrn, pvapre_.pos, pvapre_.vel);
 
     Eigen::Matrix3d temp;
     Eigen::Vector3d accel, omega;
@@ -237,8 +230,8 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
 
     rmh   = rmrn[0] + pvapre_.pos[2];
     rnh   = rmrn[1] + pvapre_.pos[2];
-    accel = imucur.dvel / imucur.dt;
-    omega = imucur.dtheta / imucur.dt;
+    accel = imucur.accel;
+    omega = imucur.omega;
 
     // 位置误差
     // position error
@@ -336,9 +329,9 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // 使用NHC添加约束
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
-    // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
+    if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
         // if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 5.0)) {
-        if (engineopt_.enable_nhc) {
+        // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
         pvacur_.status |= 0b0010;
     }
@@ -354,8 +347,8 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     Dr          = Earth::DR(pvacur_.pos);
     antenna_pos = pvacur_.pos + Dr_inv * pvacur_.att.cbn * options_.antlever;
     antenna_vel = pvacur_.vel -
-                  Rotation::skewSymmetric(Earth::iewn(pvacur_.pos[0])) * (pvacur_.att.cbn * options_.antlever) -
-                  pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * (imucur_.dtheta / imucur_.dt));
+                  Rotation::skewSymmetric(Earth::wien(pvacur_.pos[0])) * (pvacur_.att.cbn * options_.antlever) -
+                  pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * imucur_.omega);
     // GNSS位置测量新息
     // compute GNSS position innovation
     Eigen::MatrixXd dz;
@@ -386,14 +379,13 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     H_gnssvel.setZero();
     H_gnssvel.block(0, V_ID, 3, 3) = Eigen::Matrix3d::Identity();
     H_gnssvel.block(0, PHI_ID, 3, 3) =
-        -(Rotation::skewSymmetric(Earth::iewn(pvacur_.pos[0])) *
+        -(Rotation::skewSymmetric(Earth::wien(pvacur_.pos[0])) *
               Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
-          Rotation::skewSymmetric(pvacur_.att.cbn *
-                                  (Rotation::skewSymmetric(options_.antlever) * (imucur_.dtheta / imucur_.dt))));
+          Rotation::skewSymmetric(pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * imucur_.omega)));
     H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
     if (engineopt_.estimate_scale) {
         H_gnssvel.block(0, SG_ID, 3, 3) =
-            -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * (imucur_.dtheta / imucur_.dt).asDiagonal();
+            -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * imucur_.omega.asDiagonal();
     }
     // GNSS速度观测噪声矩阵
     Eigen::MatrixXd R_gnssvel;
@@ -438,7 +430,6 @@ void GIEngine::EKFPredict(Eigen::MatrixXd &Phi, Eigen::MatrixXd &Qd) {
     // 传播系统协方差和误差状态
     // propagate system covariance and error state
     Qd.block(P_ID, P_ID, 3, 3).diagonal().array() += options_.processNoise_pos;
-    Qd.block(V_ID, V_ID, 3, 3).diagonal().array() += options_.processNoise_vel;
     Cov_ = Phi * Cov_ * Phi.transpose() + Qd;
     // Logging::printMatrix(Cov_);
     dx_ = Phi * dx_;
@@ -521,7 +512,7 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
     // if state feedback is performed after every update, dx_ is always zero before the update
     // the following formula can be simplified as : dx_ = K * dz;
     dx_  = dx_ + K * (dz - H * dx_);
-    Cov_ = I * Cov_ * I.transpose() + K * R * K.transpose();
+    Cov_ = I * Cov_;
 }
 
 void GIEngine::stateFeedback() {
@@ -653,7 +644,7 @@ int GIEngine::nhc(PVA pvacur_) {
 #endif
 
     if (nv > 1) {
-        EKFUpdate(dz, H, R, KFFilterType::EKF);
+        EKFUpdate(dz, H, R, KFFilterType::Huber);
         stateFeedback();
         // std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
     }
@@ -676,19 +667,23 @@ int GIEngine::zupt(PVA pvacur_) {
     H.resize(3, Cov_.rows());
     H.setZero();
     H.block(0, V_ID, 3, 3) << Cnb;
-    H.block(0, PHI_ID, 3, 3) << Cnb * Rotation::skewSymmetric(vn);
-    dz(0)   = T1(0) * vn(0) + T1(1) * vn(1) + T1(2) * vn(2);
-    dz(1)   = T2(0) * vn(0) + T2(1) * vn(1) + T2(2) * vn(2);
-    dz(2)   = T3(0) * vn(0) + T3(1) * vn(1) + T3(2) * vn(2);
-    R(0, 0) = pow(1, 2);
-    R(1, 1) = pow(1, 2);
-    R(2, 2) = pow(1, 2);
-    EKFUpdate(dz, H, R, KFFilterType::EKF);
+    H.block(0, PHI_ID, 3, 3) << -Cnb * Rotation::skewSymmetric(vn);
+    dz(0)   = vb[0];
+    dz(1)   = vb[1];
+    dz(2)   = vb[2];
+    R(0, 0) = pow(0.5, 2);
+    R(1, 1) = pow(0.5, 2);
+    R(2, 2) = pow(0.5, 2);
+    EKFUpdate(dz, H, R, KFFilterType::Huber);
+    // pvapre_.vel.setZero();
+    // pvacur_.vel.setZero();
+    // imucur_.dtheta.setZero();
     stateFeedback();
+
     return 0;
 }
 
-bool GIEngine::isStatic() {
+bool GIEngine::isStatic(std::vector<double> &average) {
     bool isZupt{false};
     bool flag_t{false};
     Eigen::Vector3d accmean{0.0, 0.0, 0.0};
@@ -697,6 +692,7 @@ bool GIEngine::isStatic() {
     Eigen::Vector3d gyrstd{0.0, 0.0, 0.0};
     Eigen::Vector3d resacc{0.0, 0.0, 0.0};
     Eigen::Vector3d resgyr{0.0, 0.0, 0.0};
+    Eigen::Vector3d gravity{0.0, 0.0, Earth::gravity(pvacur_.pos)};
     // GNSS速度小于阈值，直接成立
     if (gnssdata_.vel.norm() != 0.0 && gnssdata_.vel.norm() < options_.engineopt.zuptopt.vel_threshold) {
         isZupt = true;
@@ -707,28 +703,29 @@ bool GIEngine::isStatic() {
     } else {
         // 计算IMU数据的平均加速度和加速度标准差
         for (auto imu : imuwindow_) {
-            accmean += imu.dvel / imu.dt;
+            accmean += imu.accel;
         }
         accmean /= imuwindow_.size();
         // 计算IMU数据的平均角速度和角速度标准差
         for (auto imu : imuwindow_) {
-            gyromean += imu.dtheta / imu.dt;
+            gyromean += imu.omega;
         }
         gyromean /= imuwindow_.size();
         for (auto imu : imuwindow_) {
-            accstd += (imu.dvel - accmean).cwiseProduct(imu.dvel - accmean);
+            accstd += (imu.accel - accmean).cwiseProduct(imu.accel - accmean);
         }
         accstd /= imuwindow_.size();
         // 开方
         accstd = accstd.cwiseSqrt();
+        accstd = (accstd - gravity).cwiseAbs();
         for (auto imu : imuwindow_) {
-            gyrstd += (imu.dtheta - gyromean).cwiseProduct(imu.dtheta - gyromean);
+            gyrstd += (imu.omega - gyromean).cwiseProduct(imu.omega - gyromean);
         }
         gyrstd /= imuwindow_.size();
         gyrstd = gyrstd.cwiseSqrt();
         // 计算当前历元加速度角速度与均值的差
-        resacc = imucur_.dvel - accmean;
-        resgyr = imucur_.dtheta - gyromean;
+        resacc = imucur_.accel - accmean - gravity;
+        resgyr = imucur_.omega - gyromean;
         // 3-sigma准则检验当前IMU数值是否异常
         if (resacc.norm() < 3 * accstd.norm() && resgyr.norm() < 3 * gyrstd.norm()) {
             flag_t = true;
@@ -737,11 +734,18 @@ bool GIEngine::isStatic() {
             gyrstd.norm() * R2D < options_.engineopt.zuptopt.wib_threshold) {
             isZupt = true;
         }
-        //
-        //
     }
+    // LOGI << "accstd: " << std::format("{:.6f}", accstd.norm())
+    //      << " m/s², gyrstd: " << std::format("{:.6f}", gyrstd.norm() * R2D)
+    //      << " °/s, resacc: " << std::format("{:.6f}", resacc.norm())
+    //      << " m/s, resgyr: " << std::format("{:.6f}", resgyr.norm() * R2D) << " °/s"
+    //      << ", isZupt: " << isZupt << std::endl;
     if (isZupt) {
-        // LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time) << std::endl;
+        LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time)
+             << "gyro bias update:" << gyromean[0] * R2D * 3600 << "," << gyromean[1] * R2D * 3600 << ","
+             << gyromean[2] * R2D * 3600 << " °/h" << std::endl;
+        // imuerror_.gyrbias = gyromean;
+        average = {gyromean[0], gyromean[1], gyromean[2], accmean[0], accmean[1], accmean[2]};
     }
     return isZupt;
 }
@@ -765,4 +769,24 @@ bool GIEngine::isTurning() {
         //           << std::endl;
     }
     return isTurn;
+}
+void GIEngine::alignProcess() {
+    std::vector<double> average;
+    if (isStatic(average)) {
+        getImuHorizonalAttitude(average, gnssdata_.blh);
+        imuerror_.gyrbias    = Eigen::Vector3d(average[0], average[1], average[2]);
+        haveHorizonalAttitude = true;
+    } else {
+        if (haveHorizonalAttitude && gnssdata_.isvalid && gnssdata_.vel.norm() > 2.0) {
+            double yaw           = atan2(gnssdata_.vel[1], gnssdata_.vel[0]);
+            pvacur_.att.euler[2] = yaw;
+            pvacur_.att.qbn      = Rotation::euler2quaternion(pvacur_.att.euler);
+            pvacur_.att.cbn      = Rotation::euler2matrix(pvacur_.att.euler);
+            pvacur_.pos          = gnssdata_.blh;
+            pvacur_.vel          = gnssdata_.vel;
+            pvapre_ = pvacur_;
+            isAligned            = true;
+            alignedTime = gnssdata_.time;
+        }
+    }
 }

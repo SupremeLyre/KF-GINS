@@ -25,16 +25,22 @@
 #include <Eigen/Dense>
 #include <deque>
 
+#include "common/rotation.h"
 #include "common/types.h"
 
 #include "kf_gins_types.h"
+
+#include "common/earth.h"
 
 class GIEngine {
 
 public:
     explicit GIEngine(GINSOptions &options);
 
-    ~GIEngine() = default;
+    ~GIEngine()    = default;
+    bool isAligned = false;
+    bool haveHorizonalAttitude = false;
+    double alignedTime = 0.0;
 
     /**
      * @brief 添加新的IMU数据，(不)补偿IMU误差
@@ -50,7 +56,13 @@ public:
         imu_.dvel   = C_imu_body * imu_.dvel;
         imupre_     = imucur_;
         imucur_     = imu_;
-
+        if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= 10.0) {
+            imuwindow_.push_back(imucur_);
+        } else {
+            // 退一个头部元素，在尾部插入一个新元素
+            imuwindow_.pop_front();
+            imuwindow_.push_back(imucur_);
+        }
         if (compensate) {
             imuCompensate(imucur_);
         }
@@ -131,8 +143,37 @@ public:
     }
     int nhc(PVA pvacur_);
     int zupt(PVA pvacur_);
-    bool isStatic();
+    bool isStatic(std::vector<double> &average);
     bool isTurning();
+    void alignProcess();
+    std::vector<double> average;
+    // 加速度计平均值求水平姿态
+    bool getImuHorizonalAttitude(std::vector<double> &average, Vector3d &blh) {
+        Vector3d gn = {0, 0, Earth::gravity(blh)};
+        Vector3d vg = gn / gn.norm();
+        Vector3d vw = Rotation::skewSymmetric(gn) * Earth::wien(blh[0]);
+        vw /= vw.norm();
+        Vector3d vgw = Rotation::skewSymmetric(gn) * Rotation::skewSymmetric(Earth::wien(blh[0])) * gn;
+        vgw /= vgw.norm();
+        Vector3d gb   = {-average[3], -average[4], -average[5]};
+        Vector3d wg   = gb / gb.norm();
+        Vector3d wibb = {average[0], average[1], average[2]};
+        Vector3d ww   = Rotation::skewSymmetric(gb) * wibb;
+        ww /= ww.norm();
+        Vector3d wgw = Rotation::skewSymmetric(gb) * Rotation::skewSymmetric(wibb) * gb;
+        wgw /= wgw.norm();
+        Matrix3d Cbn = Matrix3d::Zero();
+        Matrix3d Vn  = Matrix3d::Zero();
+        Matrix3d Wb  = Matrix3d::Zero();
+        Vn << vg, vw, vgw;
+        Wb << wg.transpose(), ww.transpose(), wgw.transpose();
+        Cbn                  = Vn * Wb;
+        pvacur_.att.euler    = Rotation::matrix2euler(Cbn);
+        pvacur_.att.euler[2] = 0.0;
+        std::cout << "Initial Horizontal Attitude: " << pvacur_.att.euler[0] * R2D << " " << pvacur_.att.euler[1] * R2D
+                  << std::endl;
+        return true;
+    }
 
 private:
     /**

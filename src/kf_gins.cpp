@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
     // imu数据配置，数据处理区间
     // imudata configuration， data processing interval
     int imudatalen, imudatarate;
-    double starttime, endtime;
+    double starttime{}, endtime{-1};
     int newtype = 0;
     try {
         newtype = config["newtype"].as<int>();
@@ -107,8 +107,6 @@ int main(int argc, char *argv[]) {
     try {
         imudatalen  = config["imudatalen"].as<int>();
         imudatarate = config["imudatarate"].as<int>();
-        starttime   = config["starttime"].as<double>();
-        endtime     = config["endtime"].as<double>();
     } catch (YAML::Exception &exception) {
         std::cout << "Failed when loading configuration. Please check the data length, data rate, and the process time!"
                   << std::endl;
@@ -205,40 +203,6 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
     //              velocity(speeds in the directions of north, east and down)
     //              attitude(euler angle, ZYX, roll, pitch and yaw)
     std::vector<double> vec1, vec2, vec3, vec4, vec5, vec6;
-    try {
-        vec1 = config["initpos"].as<std::vector<double>>();
-        vec2 = config["initvel"].as<std::vector<double>>();
-        vec3 = config["initatt"].as<std::vector<double>>();
-    } catch (YAML::Exception &exception) {
-        std::cout << "Failed when loading configuration. Please check initial position, velocity, and attitude!"
-                  << std::endl;
-        return false;
-    }
-    for (int i = 0; i < 3; i++) {
-        options.initstate.pos[i]   = vec1[i] * D2R;
-        options.initstate.vel[i]   = vec2[i];
-        options.initstate.euler[i] = vec3[i] * D2R;
-    }
-    options.initstate.pos[2] *= R2D;
-
-    // 读取IMU误差初始值(零偏和比例因子)
-    // load initial imu error (bias and scale factor)
-    try {
-        vec1 = config["initgyrbias"].as<std::vector<double>>();
-        vec2 = config["initaccbias"].as<std::vector<double>>();
-        vec3 = config["initgyrscale"].as<std::vector<double>>();
-        vec4 = config["initaccscale"].as<std::vector<double>>();
-    } catch (YAML::Exception &exception) {
-        std::cout << "Failed when loading configuration. Please check initial IMU error!" << std::endl;
-        return false;
-    }
-    for (int i = 0; i < 3; i++) {
-        options.initstate.imuerror.gyrbias[i]  = vec1[i] * D2R / 3600.0;
-        options.initstate.imuerror.accbias[i]  = vec2[i] * 1e-5;
-        options.initstate.imuerror.gyrscale[i] = vec3[i] * 1e-6;
-        options.initstate.imuerror.accscale[i] = vec4[i] * 1e-6;
-    }
-
     // 读取初始位置、速度、姿态(欧拉角)的标准差
     // load initial position std, velocity std and attitude(euler angle) std
     try {
@@ -363,7 +327,6 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
     options.engineopt = opt1;
     try {
         options.processNoise_pos = config["processnoise"]["pos"].as<double>();
-        options.processNoise_vel = config["processnoise"]["vel"].as<double>();
     } catch (YAML::Exception &exception) {
         std::cout << "Missing process noise configuration!" << std::endl;
         return false;
@@ -382,7 +345,7 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
 
     // 保存导航结果
     // save navigation result
-    if (1) {
+    if (time - (int) time < 0.01) {
 #if 1
 
         result.clear();
@@ -474,6 +437,7 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
         std::cout << "Failed to open data file!" << std::endl;
         return -1;
     }
+    starttime = imufile.starttime();
 #if 0
     navfile.fstream() << "%   GPST          latitude(deg) longitude(deg)  height(m)   Q  ns   sdn(m)   sde(m)   sdu(m)  "
                          "sdne(m)  sdeu(m)  sdun(m) age(s)  ratio    vx(m/s)    vy(m/s)    vz(m/s)      sdvx   "
@@ -525,30 +489,45 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
 
         // 处理新的IMU数据
         // process new imudata
-        giengine.newImuProcess();
+        if (giengine.isAligned) {
+            giengine.newImuProcess();
+            // 获取当前时间，IMU状态和协方差
+            // get current timestamp, navigation state and covariance
+            week      = giengine.week();
+            timestamp = giengine.timestamp();
+            navstate  = giengine.getNavState();
+            cov       = giengine.getCovariance();
 
-        // 获取当前时间，IMU状态和协方差
-        // get current timestamp, navigation state and covariance
-        week      = giengine.week();
-        timestamp = giengine.timestamp();
-        navstate  = giengine.getNavState();
-        cov       = giengine.getCovariance();
+            // 保存处理结果
+            // save processing results
+            writeNavResult(week, timestamp, navstate, navfile, imuerrfile, cov);
+            writeSTD(timestamp, cov, stdfile);
 
-        // 保存处理结果
-        // save processing results
-        writeNavResult(week, timestamp, navstate, navfile, imuerrfile, cov);
-        writeSTD(timestamp, cov, stdfile);
+            // 显示处理进展
+            // display processing progress
+            interval = endtime - starttime;
 
-        // 显示处理进展
-        // display processing progress
-        interval = endtime - starttime;
-
-        percent = int((imu_cur.time - starttime) / interval * 100);
-        if (percent - lastpercent >= 1) {
-            std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
-                                     percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D, navstate.pos[2])
-                      << std::flush;
-            lastpercent = percent;
+            percent = int((imu_cur.time - starttime) / interval * 100);
+            if (percent - lastpercent >= 1) {
+                std::cout << std::format("- Processing: {:3}% TIME:{:10.3f}, LAT:{:14.10f}, LON:{:14.10f}, H:{:9.4f}\r",
+                                         percent, timestamp, navstate.pos[0] * R2D, navstate.pos[1] * R2D,
+                                         navstate.pos[2])
+                          << std::flush;
+                lastpercent = percent;
+            }
+        } else {
+            giengine.alignProcess();
+            if (giengine.isAligned) {
+                while (1) {
+                    imu_cur = imufile.next();
+                    if (imu_cur.time > giengine.alignedTime || imufile.isEof()) {
+                        giengine.newImuProcess();
+                        break;
+                    }
+                    giengine.addImuData(imu_cur);
+                }
+            }
+            continue;
         }
     }
 

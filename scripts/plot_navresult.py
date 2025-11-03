@@ -396,7 +396,7 @@ def calcNavresultError(navresult_filepath, refresult_filepath, type):
 
     # 航向角平滑
     navresult[:, 10] = np.unwrap(navresult[:, 10] * D2R, period=2*np.pi) * R2D
-    refresult[:, 10] = np.unwrap(refresult[:, 10] * D2R, period=2*np.pi) * R2D - 1080
+    refresult[:, 10] = np.unwrap(refresult[:, 10] * D2R, period=2*np.pi) * R2D
 
     # 找到数据重合部分，参考结果内插到测试结果
     start_time = (
@@ -446,6 +446,7 @@ if __name__ == "__main__":
     # path = "./dataset/20250103/pppimu"
     # path = "./dataset/20250318/pppimu"
     path = "./dataset/20250915/pppimu"
+    # path = "./dataset/20251011/pppimu"
     # path = "./dataset/example"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"

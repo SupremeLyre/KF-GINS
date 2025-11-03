@@ -250,26 +250,26 @@ public:
     }
 
     /* 地球自转角速度投影到n系 */
-    static Vector3d iewn(double lat) {
+    static Vector3d wien(double lat) {
         return {WGS84_WIE * cos(lat), 0, -WGS84_WIE * sin(lat)};
     }
 
-    static Vector3d iewn(const Vector3d &origin, const Vector3d &local) {
+    static Vector3d wien(const Vector3d &origin, const Vector3d &local) {
         Vector3d global = local2global(origin, local);
 
-        return iewn(global[0]);
+        return wien(global[0]);
     }
 
     /* n系相对于e系转动角速度投影到n系 */
-    static Vector3d enwn(const Eigen::Vector2d &rmn, const Vector3d &blh, const Vector3d &vel) {
+    static Vector3d wenn(const Eigen::Vector2d &rmn, const Vector3d &blh, const Vector3d &vel) {
         return {vel[1] / (rmn[1] + blh[2]), -vel[0] / (rmn[0] + blh[2]), -vel[1] * tan(blh[0]) / (rmn[1] + blh[2])};
     }
 
-    static Vector3d enwn(const Vector3d &origin, const Vector3d &local, const Vector3d &vel) {
+    static Vector3d wenn(const Vector3d &origin, const Vector3d &local, const Vector3d &vel) {
         Vector3d global     = local2global(origin, local);
         Eigen::Vector2d rmn = meridianPrimeVerticalRadius(global[0]);
 
-        return enwn(rmn, global, vel);
+        return wenn(rmn, global, vel);
     }
 };
 

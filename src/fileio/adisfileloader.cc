@@ -25,6 +25,8 @@ const IMU &AdisFileLoader::next() {
         imu_.dtheta << temper.gyr[1] * D2R * imu_.dt, temper.gyr[0] * D2R * imu_.dt, -temper.gyr[2] * D2R * imu_.dt;
         imu_.dvel << temper.acc[1] * imu_.dt * 9.80665, temper.acc[0] * imu_.dt * 9.80665,
             -temper.acc[2] * imu_.dt * 9.80665;
+        imu_.accel << temper.acc[1] * 9.80665, temper.acc[0] * 9.80665, -temper.acc[2] * 9.80665;
+        imu_.omega << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
 #else
         imu_.dtheta << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
         imu_.dvel << temper.acc[1], temper.acc[0], -temper.acc[2];

@@ -54,7 +54,8 @@ public:
         } else {
             imu_.dt = dt_;
         }
-
+        imu_.accel = imu_.dvel / imu_.dt;
+        imu_.omega = imu_.dtheta / imu_.dt;
         // 增量形式
         if (columns_ > 7) {
             imu_.odovel = data_[7] * imu_.dt;
