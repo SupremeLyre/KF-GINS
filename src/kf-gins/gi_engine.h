@@ -170,8 +170,8 @@ public:
         Cbn                  = Vn * Wb;
         pvacur_.att.euler    = Rotation::matrix2euler(Cbn);
         pvacur_.att.euler[2] = 0.0;
-        std::cout << "Initial Horizontal Attitude: " << pvacur_.att.euler[0] * R2D << " " << pvacur_.att.euler[1] * R2D
-                  << std::endl;
+        // std::cout << "Initial Horizontal Attitude: " << pvacur_.att.euler[0] * R2D << " " << pvacur_.att.euler[1] * R2D
+        //           << std::endl;
         return true;
     }
 
@@ -273,6 +273,7 @@ private:
             }
         }
     }
+    void print_init_info();
 
 private:
     GINSOptions options_;

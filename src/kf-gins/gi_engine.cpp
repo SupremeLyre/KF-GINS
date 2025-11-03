@@ -20,6 +20,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "gi_engine.h"
+#include "Eigen/Core"
 #include "common/angle.h"
 #include "common/earth.h"
 #include "common/logging.h"
@@ -72,22 +73,7 @@ GIEngine::GIEngine(GINSOptions &options) {
 
 void GIEngine::initialize(const NavState &initstate, const NavState &initstate_std) {
 
-    // 初始化位置、速度、姿态
-    // initialize position, velocity and attitude
-    // pvacur_.pos       = initstate.pos;
-    // pvacur_.vel       = initstate.vel;
-    // pvacur_.att.euler = initstate.euler;
-    // pvacur_.att.cbn   = Rotation::euler2matrix(pvacur_.att.euler);
-    // pvacur_.att.qbn   = Rotation::euler2quaternion(pvacur_.att.euler);
     pvacur_.status = 0;
-    // 初始化IMU误差
-    // initialize imu error
-    // imuerror_ = initstate.imuerror;
-
-    // 给上一时刻状态赋同样的初值
-    // set the same value to the previous state
-    // pvapre_ = pvacur_;
-
     // 初始化协方差
     // initialize covariance
     ImuError imuerror_std            = initstate_std.imuerror;
@@ -329,8 +315,8 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // 使用NHC添加约束
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
-    if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
-        // if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 5.0)) {
+    // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
+    if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 5.0)) {
         // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
         pvacur_.status |= 0b0010;
@@ -463,7 +449,8 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
             break;
         }
         case KFFilterType::IGG3: {
-            double k0 = 2.0, k1 = 8.0;
+            double k0 = 1.5, k1 = 8.0;
+            double factor        = 1.0;
             Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
             for (int i = 0; i < dz.rows(); i++) {
                 double sigma = sqrt((HPHt + R)(i, i));
@@ -472,12 +459,13 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
                 double v_normalized = fabs(dz(i, 0)) / sigma;
                 // LOG(INFO) << "v_normalized: " << v_normalized << std::endl;
                 if (v_normalized <= k0) {
-                    adj_R(i, i) *= 1; // 调整等价权
+                    factor = 1.0;
                 } else if (v_normalized < k1) {
-                    adj_R(i, i) *= abs(v_normalized / k0) * pow(((k1 - k0) / (k1 - v_normalized)), 2); // 调整等价权
+                    factor = abs(v_normalized / k0) * pow(((k1 - k0) / (k1 - v_normalized)), 2); // 调整等价权
                 } else {
-                    adj_R(i, i) *= 10;
+                    factor = 100.0; // 调整等价权
                 }
+                adj_R(i, i) *= factor;
             }
             break;
         }
@@ -651,34 +639,24 @@ int GIEngine::nhc(PVA pvacur_) {
     return nv;
 }
 int GIEngine::zupt(PVA pvacur_) {
-    Eigen::Matrix3d Cnb = pvacur_.att.cbn.transpose();
-    Eigen::MatrixXd T1, T2, T3;
-
-    T1 = Cnb.row(0);
-    T2 = Cnb.row(1);
-    T3 = Cnb.row(2);
-
     Eigen::Vector3d vn = pvacur_.vel;
-    Eigen::Vector3d vb = Cnb * vn;
     Eigen::MatrixXd H, R, dz;
     dz.resize(3, 1);
     R.resize(3, 3);
     R.setZero();
     H.resize(3, Cov_.rows());
     H.setZero();
-    H.block(0, V_ID, 3, 3) << Cnb;
-    H.block(0, PHI_ID, 3, 3) << -Cnb * Rotation::skewSymmetric(vn);
-    dz(0)   = vb[0];
-    dz(1)   = vb[1];
-    dz(2)   = vb[2];
-    R(0, 0) = pow(0.5, 2);
-    R(1, 1) = pow(0.5, 2);
-    R(2, 2) = pow(0.5, 2);
+    H.block(0, V_ID, 3, 3) << Matrix3d::Identity();
+    dz(0)   = vn[0];
+    dz(1)   = vn[1];
+    dz(2)   = vn[2];
+    R(0, 0) = pow(0.1, 2);
+    R(1, 1) = pow(0.1, 2);
+    R(2, 2) = pow(0.1, 2);
     EKFUpdate(dz, H, R, KFFilterType::Huber);
-    // pvapre_.vel.setZero();
-    // pvacur_.vel.setZero();
-    // imucur_.dtheta.setZero();
     stateFeedback();
+    pvapre_.vel.setZero();
+    pvacur_.vel.setZero();
 
     return 0;
 }
@@ -717,14 +695,13 @@ bool GIEngine::isStatic(std::vector<double> &average) {
         accstd /= imuwindow_.size();
         // 开方
         accstd = accstd.cwiseSqrt();
-        accstd = (accstd - gravity).cwiseAbs();
         for (auto imu : imuwindow_) {
             gyrstd += (imu.omega - gyromean).cwiseProduct(imu.omega - gyromean);
         }
         gyrstd /= imuwindow_.size();
         gyrstd = gyrstd.cwiseSqrt();
         // 计算当前历元加速度角速度与均值的差
-        resacc = imucur_.accel - accmean - gravity;
+        resacc = imucur_.accel - accmean;
         resgyr = imucur_.omega - gyromean;
         // 3-sigma准则检验当前IMU数值是否异常
         if (resacc.norm() < 3 * accstd.norm() && resgyr.norm() < 3 * gyrstd.norm()) {
@@ -741,9 +718,9 @@ bool GIEngine::isStatic(std::vector<double> &average) {
     //      << " m/s, resgyr: " << std::format("{:.6f}", resgyr.norm() * R2D) << " °/s"
     //      << ", isZupt: " << isZupt << std::endl;
     if (isZupt) {
-        LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time)
-             << "gyro bias update:" << gyromean[0] * R2D * 3600 << "," << gyromean[1] * R2D * 3600 << ","
-             << gyromean[2] * R2D * 3600 << " °/h" << std::endl;
+        // LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time)
+        //      << "gyro bias update:" << gyromean[0] * R2D * 3600 << "," << gyromean[1] * R2D * 3600 << ","
+        //      << gyromean[2] * R2D * 3600 << " °/h" << std::endl;
         // imuerror_.gyrbias = gyromean;
         average = {gyromean[0], gyromean[1], gyromean[2], accmean[0], accmean[1], accmean[2]};
     }
@@ -774,7 +751,7 @@ void GIEngine::alignProcess() {
     std::vector<double> average;
     if (isStatic(average)) {
         getImuHorizonalAttitude(average, gnssdata_.blh);
-        imuerror_.gyrbias    = Eigen::Vector3d(average[0], average[1], average[2]);
+        imuerror_.gyrbias     = Eigen::Vector3d(average[0], average[1], average[2]);
         haveHorizonalAttitude = true;
     } else {
         if (haveHorizonalAttitude && gnssdata_.isvalid && gnssdata_.vel.norm() > 2.0) {
@@ -784,9 +761,23 @@ void GIEngine::alignProcess() {
             pvacur_.att.cbn      = Rotation::euler2matrix(pvacur_.att.euler);
             pvacur_.pos          = gnssdata_.blh;
             pvacur_.vel          = gnssdata_.vel;
-            pvapre_ = pvacur_;
+            pvapre_              = pvacur_;
             isAligned            = true;
-            alignedTime = gnssdata_.time;
+            alignedTime          = gnssdata_.time;
+            print_init_info();
         }
     }
+}
+void GIEngine::print_init_info() {
+    std::cout << " - Initial State: " << std::endl;
+    std::cout << "\t- initial time    : " << gnssdata_.time << std::endl;
+    std::cout << '\t' << "- initial position: ";
+    std::cout << std::setprecision(12) << pvacur_.pos[0] * R2D << "  ";
+    std::cout << std::setprecision(12) << pvacur_.pos[1] * R2D << "  ";
+    std::cout << std::setprecision(6) << pvacur_.pos[2] << " [deg, deg, m] " << std::endl;
+    std::cout << '\t' << "- initial velocity: " << pvacur_.vel.transpose() << " [m/s] " << std::endl;
+    std::cout << '\t' << "- initial attitude: " << pvacur_.att.euler.transpose() * R2D << " [deg] " << std::endl;
+    std::cout << '\t' << "- initial gyrbias : " << imuerror_.gyrbias.transpose() * R2D * 3600 << " [deg/h] "
+              << std::endl;
+    std::cout << '\t' << "- initial accbias : " << imuerror_.accbias.transpose() * 1e5 << " [mGal] " << std::endl;
 }
