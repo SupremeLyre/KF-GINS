@@ -37,10 +37,12 @@ class GIEngine {
 public:
     explicit GIEngine(GINSOptions &options);
 
-    ~GIEngine()    = default;
-    bool isAligned = false;
+    ~GIEngine()                = default;
+    bool isAligned             = false;
     bool haveHorizonalAttitude = false;
-    double alignedTime = 0.0;
+    double alignedTime         = 0.0;
+    int alignedWeek            = 0;
+    double updatetime          = 0.0;
 
     /**
      * @brief 添加新的IMU数据，(不)补偿IMU误差
@@ -146,6 +148,7 @@ public:
     bool isStatic(std::vector<double> &average);
     bool isTurning();
     void alignProcess();
+    void finishAlignNow();
     std::vector<double> average;
     // 加速度计平均值求水平姿态
     bool getImuHorizonalAttitude(std::vector<double> &average, Vector3d &blh) {
@@ -170,10 +173,47 @@ public:
         Cbn                  = Vn * Wb;
         pvacur_.att.euler    = Rotation::matrix2euler(Cbn);
         pvacur_.att.euler[2] = 0.0;
-        // std::cout << "Initial Horizontal Attitude: " << pvacur_.att.euler[0] * R2D << " " << pvacur_.att.euler[1] * R2D
+        // std::cout << "Initial Horizontal Attitude: " << pvacur_.att.euler[0] * R2D << " " << pvacur_.att.euler[1] *
+        // R2D
         //           << std::endl;
         return true;
     }
+    void checkCov() {
+
+        for (int i = 0; i < RANK; i++) {
+            if (Cov_(i, i) < 0) {
+                std::cout << "Covariance is negative at " << std::setprecision(10) << timestamp_ << " !" << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+        }
+    }
+    void updatePva() {
+        pvapre_        = pvacur_;
+        imupre_        = imucur_;
+        pvacur_.status = 0;
+    }
+    /**
+     * @brief 进行INS状态更新(IMU机械编排算法), 并计算IMU状态转移矩阵和噪声阵
+     *        do INS state update(INS mechanization), and compute state transition matrix and noise matrix
+     * @param [in,out] imupre 前一时刻IMU数据
+     *                        imudata at the previous epoch
+     * @param [in,out] imucur 当前时刻IMU数据
+     *                        imudata at the current epoch
+     * */
+    void insPropagation(IMU &imupre, IMU &imucur);
+
+    /**
+     * @brief 使用GNSS位置观测更新系统状态
+     *        update state using gnss position
+     * @param [in,out] gnssdata
+     * */
+    void gnssUpdate(GNSS &gnssdata);
+
+    /**
+     * @brief 反馈误差状态到当前状态
+     *        feedback error state to the current state
+     * */
+    void stateFeedback();
 
 private:
     /**
@@ -216,23 +256,6 @@ private:
     int isToUpdate(double imutime1, double imutime2, double updatetime) const;
 
     /**
-     * @brief 进行INS状态更新(IMU机械编排算法), 并计算IMU状态转移矩阵和噪声阵
-     *        do INS state update(INS mechanization), and compute state transition matrix and noise matrix
-     * @param [in,out] imupre 前一时刻IMU数据
-     *                        imudata at the previous epoch
-     * @param [in,out] imucur 当前时刻IMU数据
-     *                        imudata at the current epoch
-     * */
-    void insPropagation(IMU &imupre, IMU &imucur);
-
-    /**
-     * @brief 使用GNSS位置观测更新系统状态
-     *        update state using gnss position
-     * @param [in,out] gnssdata
-     * */
-    void gnssUpdate(GNSS &gnssdata);
-
-    /**
      * @brief Kalman 预测,
      *        Kalman Filter Predict process
      * @param [in,out] Phi 状态转移矩阵
@@ -255,24 +278,10 @@ private:
     void EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType filter_type);
 
     /**
-     * @brief 反馈误差状态到当前状态
-     *        feedback error state to the current state
-     * */
-    void stateFeedback();
-
-    /**
      * @brief 检查协方差对角线元素是否都为正
      *        Check if covariance diagonal elements are all positive
      * */
-    void checkCov() {
 
-        for (int i = 0; i < RANK; i++) {
-            if (Cov_(i, i) < 0) {
-                std::cout << "Covariance is negative at " << std::setprecision(10) << timestamp_ << " !" << std::endl;
-                std::exit(EXIT_FAILURE);
-            }
-        }
-    }
     void print_init_info();
 
 private:
@@ -318,7 +327,6 @@ private:
         SA_ID  = 18,
     };
     enum NoiseID { VRW_ID = 0, ARW_ID = 3, BGSTD_ID = 6, BASTD_ID = 9, SGSTD_ID = 12, SASTD_ID = 15 };
-    double updatetime;
 };
 
 #endif // GI_ENGINE_H

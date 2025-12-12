@@ -15,7 +15,6 @@ else()
 endif()
 
 file(GLOB_RECURSE SOURCE
-    src/kf_gins.cpp
     src/common/time.cc
     src/common/crc32.cc
     src/fileio/fileloader.cc
@@ -27,7 +26,8 @@ file(GLOB_RECURSE SOURCE
     src/kf-gins/insmech.cpp)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
-add_executable(${PROJECT_NAME} ${SOURCE})
+add_executable(${PROJECT_NAME} ${SOURCE} src/kf_gins.cpp)
+
 
 # Eigen3
 # find_package(Eigen3 REQUIRED)
@@ -49,3 +49,5 @@ target_link_libraries(${PROJECT_NAME}
     absl::strings
     absl::str_format
     absl::time)
+add_executable(kf_gins_rt ${SOURCE} src/kf_gins_rt.cpp)
+target_link_libraries(kf_gins_rt yaml-cpp glog::glog absl::strings absl::str_format absl::time)

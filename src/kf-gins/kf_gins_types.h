@@ -88,6 +88,7 @@ typedef struct GINSOptions {
 
     // 初始状态和状态标准差
     // initial state and state standard deviation
+    int sample_rate;
     NavState initstate;
     NavState initstate_std;
 

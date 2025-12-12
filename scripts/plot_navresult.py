@@ -445,8 +445,9 @@ if __name__ == "__main__":
     # path = './dataset/20241101/posimu'
     # path = "./dataset/20250103/pppimu"
     # path = "./dataset/20250318/pppimu"
-    path = "./dataset/20250915/pppimu"
-    # path = "./dataset/20251011/pppimu"
+    # path = "./dataset/20250915/pppimu"
+    path = "./dataset/20251011/pppimu1"
+    # path = "./dataset/20251105/pppimu1"
     # path = "./dataset/example"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"

@@ -113,7 +113,7 @@ void GIEngine::newImuProcess() {
         // gnssdata is near to the previous imudata, we should firstly do gnss update
         gnssUpdate(gnssdata_);
         stateFeedback();
-        pvacur_.status |= 0b0001;
+        // pvacur_.status |= 0b0001;
         pvapre_ = pvacur_;
         insPropagation(imupre_, imucur_);
     } else if (res == 2) {
@@ -122,7 +122,7 @@ void GIEngine::newImuProcess() {
         insPropagation(imupre_, imucur_);
         gnssUpdate(gnssdata_);
         stateFeedback();
-        pvacur_.status |= 0b0001;
+        // pvacur_.status |= 0b0001;
     } else {
         // GNSS数据在两个IMU数据之间(不靠近任何一个), 将当前IMU内插到整秒时刻
         // gnssdata is between the two imudata, we interpolate current imudata to gnss time
@@ -136,7 +136,7 @@ void GIEngine::newImuProcess() {
         // do GNSS position update at the whole second and feedback system states
         gnssUpdate(gnssdata_);
         stateFeedback();
-        pvacur_.status |= 0b0001;
+        // pvacur_.status |= 0b0001;
 
         // 对后一半IMU进行状态传播
         // propagate navigation state for the second half imudata
@@ -316,7 +316,7 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
     // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
-    if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 5.0)) {
+    if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
         // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
         pvacur_.status |= 0b0010;
@@ -384,7 +384,9 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
+    updatetime = gnssdata.time;
     gnssdata.isvalid = false;
+    pvacur_.status |= 0b0001;
 }
 
 int GIEngine::isToUpdate(double imutime1, double imutime2, double updatetime) const {
@@ -632,7 +634,7 @@ int GIEngine::nhc(PVA pvacur_) {
 #endif
 
     if (nv > 1) {
-        EKFUpdate(dz, H, R, KFFilterType::Huber);
+        EKFUpdate(dz, H, R, KFFilterType::EKF);
         stateFeedback();
         // std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
     }
@@ -650,13 +652,13 @@ int GIEngine::zupt(PVA pvacur_) {
     dz(0)   = vn[0];
     dz(1)   = vn[1];
     dz(2)   = vn[2];
-    R(0, 0) = pow(0.1, 2);
-    R(1, 1) = pow(0.1, 2);
-    R(2, 2) = pow(0.1, 2);
+    R(0, 0) = pow(1, 2);
+    R(1, 1) = pow(1, 2);
+    R(2, 2) = pow(1, 2);
     EKFUpdate(dz, H, R, KFFilterType::Huber);
     stateFeedback();
-    pvapre_.vel.setZero();
-    pvacur_.vel.setZero();
+    // pvapre_.vel.setZero();
+    // pvacur_.vel.setZero();
 
     return 0;
 }
@@ -749,6 +751,7 @@ bool GIEngine::isTurning() {
 }
 void GIEngine::alignProcess() {
     std::vector<double> average;
+    average.resize(6);
     if (isStatic(average)) {
         getImuHorizonalAttitude(average, gnssdata_.blh);
         imuerror_.gyrbias     = Eigen::Vector3d(average[0], average[1], average[2]);
@@ -764,6 +767,34 @@ void GIEngine::alignProcess() {
             pvapre_              = pvacur_;
             isAligned            = true;
             alignedTime          = gnssdata_.time;
+            alignedWeek          = gnssdata_.week;
+            print_init_info();
+        }
+    }
+}
+void GIEngine::finishAlignNow() {
+    std::vector<double> average;
+    average.resize(6);
+    if (isStatic(average) && !haveHorizonalAttitude) {
+        getImuHorizonalAttitude(average, gnssdata_.blh);
+        if (fabs(average[0]) > 1000 * D2R / 3600 || fabs(average[1]) > 1000 * D2R / 3600 ||
+            fabs(average[2]) > 1000 * D2R / 3600) {
+        } else {
+            imuerror_.gyrbias = Eigen::Vector3d(average[0], average[1], average[2]);
+        }
+        std::cout << "gyro bias: " << imuerror_.gyrbias.transpose() * R2D * 3600 << " [deg/h] " << std::endl;
+        haveHorizonalAttitude = true;
+    } else {
+        if (haveHorizonalAttitude && gnssdata_.isvalid) {
+            pvacur_.att.euler[2] = 0.0;
+            pvacur_.att.qbn      = Rotation::euler2quaternion(pvacur_.att.euler);
+            pvacur_.att.cbn      = Rotation::euler2matrix(pvacur_.att.euler);
+            pvacur_.pos          = gnssdata_.blh;
+            pvacur_.vel          = gnssdata_.vel;
+            pvapre_              = pvacur_;
+            alignedTime          = gnssdata_.time;
+            alignedWeek          = gnssdata_.week;
+            isAligned            = true;
             print_init_info();
         }
     }

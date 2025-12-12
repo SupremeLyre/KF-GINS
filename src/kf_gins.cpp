@@ -167,6 +167,14 @@ int main(int argc, char *argv[]) {
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
+    } else if (newtype == 5) {
+        PvtFileLoader gnssfile(gnsspath);
+        // ResPppFileLoader gnssfile(gnsspath);
+        AdisFileLoader imufile(imupath);
+        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                    timestamp, navstate, cov, interval, percent, lastpercent)) {
+            return -1;
+        }
     } else {
         // 加载GNSS文件和IMU文件
         // load GNSS file and IMU file
@@ -345,7 +353,8 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
 
     // 保存导航结果
     // save navigation result
-    if (time - (int) time < 0.01) {
+    if (fabs(time - (int) time) < 0.01) {
+    // if (1) {
 #if 1
 
         result.clear();
