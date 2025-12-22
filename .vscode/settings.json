@@ -9,7 +9,8 @@
             // "dataset/20251011/white_box2.yaml",
             // "dataset/example/kf-gins.yaml",
             // "dataset/20251105/white_box1.yaml",
-            "dataset/20251206/config.yaml",
+            // "dataset/20251206/config.yaml",
+            "dataset/20251206/white_box1.yaml",
         ],
         "cwd": "${workspaceFolder}"
     },

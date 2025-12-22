@@ -199,6 +199,7 @@ int main(int argc, char *argv[]) {
 
             if (!giengine.isAligned) {
                 if (ev.kind == SensorEventKind::GNSS) {
+                    giengine.addGnssData(ev.gnssdata);
                     giengine.alignProcess();
                     if (giengine.isAligned) {
                         int week_           = giengine.alignedWeek;
@@ -206,10 +207,22 @@ int main(int argc, char *argv[]) {
                         NavState navstate_  = giengine.getNavState();
                         Eigen::MatrixXd Cov = giengine.getCovariance();
                         PPIGINSFormat(fp_ppi, navstate_, week_, time_, Cov);
+                        // 删除所有「时间早于对准时刻」的事件
+                        while (!sensor_events.empty()) {
+                            const SensorEvent &front = sensor_events.front();
+                            if (front.week < week_ || (front.week == week_ && front.time <= time_)) {
+                                sensor_events.pop_front();
+                            } else {
+                                break;
+                            }
+                        }
                     }
+                } else if (ev.kind == SensorEventKind::IMU) {
+                    giengine.addImuData(ev.imudata, true);
                 }
             } else {
                 if (ev.kind == SensorEventKind::IMU) {
+                    giengine.addImuData(ev.imudata, true);
                     imu_pre = imu_cur;
                     // 下一秒imu已经来了却还在等gnss输出，输出一下imu的结果
                     if (fabs(imu_pre.time - round(imu_pre.time)) < 0.01 && wait_integer_gnss_out) {
@@ -224,6 +237,7 @@ int main(int argc, char *argv[]) {
                     giengine.insPropagation(imu_pre, imu_cur);
                     updatedImu = false;
                 } else if (ev.kind == SensorEventKind::GNSS) {
+                    giengine.addGnssData(ev.gnssdata);
                     gnss = ev.gnssdata;
                     printf("Processing GNSS TIME: %.3f,imu_pre.time=%.3f,imu_cur.time=%.3f\n", ev.time, imu_pre.time,
                            imu_cur.time);
@@ -277,15 +291,14 @@ int main(int argc, char *argv[]) {
                 temper.vstd      = {vstdned[1], vstdned[0], vstdned[2]};
                 Vector3d vned = Earth::cne(blh).transpose() * Vector3d(temper.vxyz[0], temper.vxyz[1], temper.vxyz[2]);
                 temper.vel    = {vned[1], vned[0], -vned[2]};
-                if (temper.status > 34 && temper.status <= 50 && temper.nsat >= 10) {
+                if (temper.status > 16 && temper.status <= 50 && temper.nsat > 8) {
                     gnss.week   = temper.week;
                     gnss.time   = temper.sow;
                     gnss.blh    = {temper.blh[0] * D2R, temper.blh[1] * D2R, temper.blh[2] + temper.undulation};
-                    gnss.std    = {temper.std[1], temper.std[0], temper.std[2]};
+                    gnss.std    = {temper.std[1] * 2, temper.std[0] * 2, temper.std[2] * 3};
                     gnss.vel    = {temper.vel[1], temper.vel[0], -temper.vel[2]};
-                    gnss.vstd   = {fabs(temper.vstd[1]), fabs(temper.vstd[0]), fabs(temper.vstd[2])};
+                    gnss.vstd   = {fabs(temper.vstd[1] * 5), fabs(temper.vstd[0] * 5), fabs(temper.vstd[2] * 5)};
                     updatedGnss = true;
-                    giengine.addGnssData(gnss);
                     ev.kind     = SensorEventKind::GNSS;
                     ev.time     = gnss.time;
                     ev.week     = gnss.week;
@@ -304,6 +317,7 @@ int main(int argc, char *argv[]) {
                 imu_pre_      = imu_cur_;
                 imu_cur_.week = temper.week;
                 imu_cur_.time = temper.sow;
+#if 0
                 double dt     = imu_cur_.time - imu_pre_.time;
                 double dt_    = 1.0 / options.sample_rate;
                 if (dt > 0.003 && dt < 0.2) {
@@ -311,20 +325,22 @@ int main(int argc, char *argv[]) {
                 } else {
                     imu_cur_.dt = dt_;
                 }
-                imu_cur_.accel << temper.acc[1] * 9.8, temper.acc[0] * 9.8, -temper.acc[2] * 9.8;
+#else
+                imu_cur_.dt = 1.0 / options.sample_rate;
+#endif
+                imu_cur_.accel << temper.acc[1] * 9.80665, temper.acc[0] * 9.80665, -temper.acc[2] * 9.80665;
                 imu_cur_.omega << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
-                imu_cur_.dvel << temper.acc[1] * 9.8 * imu_cur_.dt, temper.acc[0] * 9.8 * imu_cur_.dt,
-                    -temper.acc[2] * 9.8 * imu_cur_.dt;
+                imu_cur_.dvel << temper.acc[1] * 9.80665 * imu_cur_.dt, temper.acc[0] * 9.80665 * imu_cur_.dt,
+                    -temper.acc[2] * 9.80665 * imu_cur_.dt;
                 imu_cur_.dtheta << temper.gyr[1] * D2R * imu_cur_.dt, temper.gyr[0] * D2R * imu_cur_.dt,
                     -temper.gyr[2] * D2R * imu_cur_.dt;
                 imu_cur_.time = temper.sow;
                 imu_cur_.week = temper.week;
-                giengine.addImuData(imu_cur_);
-                updatedImu = true;
-                ev.kind    = SensorEventKind::IMU;
-                ev.time    = imu_cur_.time;
-                ev.week    = imu_cur_.week;
-                ev.imudata = imu_cur_;
+                updatedImu    = true;
+                ev.kind       = SensorEventKind::IMU;
+                ev.time       = imu_cur_.time;
+                ev.week       = imu_cur_.week;
+                ev.imudata    = imu_cur_;
                 {
                     std::lock_guard lk(m);
                     sensor_events.push_back(ev);

@@ -27,17 +27,22 @@
 #include <iomanip>
 #include <iostream>
 
+#include "Eigen/Geometry"
 #include "common/angle.h"
 
 typedef struct Attitude {
     Eigen::Quaterniond qbn;
+    Eigen::Quaterniond qbe;
     Eigen::Matrix3d cbn;
+    Eigen::Matrix3d cbe;
     Eigen::Vector3d euler;
 } Attitude;
 
 typedef struct PVA {
     Eigen::Vector3d pos;
     Eigen::Vector3d vel;
+    Eigen::Vector3d xyz; // ECEF坐标系下的位置
+    Eigen::Vector3d vel_ecef; // ECEF坐标系下的速度
     Attitude att;
     uint8_t status; // 解算状态：四位二进制，低位至高位依次是：3-INS 2-ZUPT 1-NHC 0-GNSS
 } PVA;
@@ -52,6 +57,8 @@ typedef struct ImuError {
 typedef struct NavState {
     Eigen::Vector3d pos;
     Eigen::Vector3d vel;
+    Eigen::Vector3d xyz; // ECEF坐标系下的位置
+    Eigen::Vector3d vel_ecef; // ECEF坐标系下的速度
     Eigen::Vector3d euler;
 
     ImuError imuerror;

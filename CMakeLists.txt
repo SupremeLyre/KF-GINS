@@ -23,7 +23,8 @@ file(GLOB_RECURSE SOURCE
     src/fileio/pppfileloader.cc
     src/fileio/posfileloader.cc
     src/kf-gins/gi_engine.cpp
-    src/kf-gins/insmech.cpp)
+    src/kf-gins/insmech.cpp
+    src/kf-gins/insmech_ecef.cpp)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 add_executable(${PROJECT_NAME} ${SOURCE} src/kf_gins.cpp)

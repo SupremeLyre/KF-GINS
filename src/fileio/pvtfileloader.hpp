@@ -48,7 +48,7 @@ private:
             return false;
         string line;
         std::getline(filefp_, line);
-#if 1
+#if 0
         sscanf(line.c_str(), "%c,%lf,%d,%d,%d,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &temper.type,
                &temper.sow, &temper.week, &temper.leap, &temper.status, &temper.nsat, &temper.blh[1], &temper.std[1],
                &temper.blh[0], &temper.std[0], &temper.blh[2], &temper.std[2], &temper.undulation, &temper.vel[1],
@@ -65,12 +65,12 @@ private:
         Conv_v << temper.vstd[0], 0, 0, 0, temper.vstd[1], 0, 0, 0, temper.vstd[2];
         Vector3d stdned  = (Earth::cne(blh).transpose() * Conv_ * Earth::cne(blh)).diagonal();
         Vector3d vstdned = (Earth::cne(blh).transpose() * Conv_v * Earth::cne(blh)).diagonal();
-        temper.std       = {stdned[1], stdned[0], stdned[2]};
-        temper.vstd      = {vstdned[1], vstdned[0], vstdned[2]};
+        temper.std       = {stdned[0], stdned[1], stdned[2]};
+        temper.vstd      = {vstdned[0], vstdned[1], vstdned[2]};
         Vector3d vned    = Earth::cne(blh).transpose() * Vector3d(temper.vxyz[0], temper.vxyz[1], temper.vxyz[2]);
         temper.vel       = {vned[0], vned[1], -vned[2]};
 #endif
-        if (temper.status > 34 && temper.status <= 50) {
+        if (temper.status > 34 && temper.status <= 50 && temper.nsat > 8) {
             return true;
         } else {
             return false;

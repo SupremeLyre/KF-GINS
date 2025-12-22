@@ -63,4 +63,5 @@ void FileSaver::dump_(const vector<double> &data) {
     } else {
         filefp_.write(reinterpret_cast<const char *>(data.data()), sizeof(double) * data.size());
     }
+    filefp_.sync();
 }

@@ -30,6 +30,7 @@
 #include <absl/time/clock.h>
 #include <format>
 #include <iostream>
+#include <unistd.h>
 #include <yaml-cpp/exceptions.h>
 #include <yaml-cpp/yaml.h>
 
@@ -38,10 +39,10 @@
 #include "fileio/pppfileloader.hpp"
 #include "fileio/pvtfileloader.hpp"
 #include "fileio/respppfileloader.hpp"
+#include "fileio/yisfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 #include "kf-gins/kf_gins_types.h"
-#define EIGEN_USE_BLAS
-#define EIGEN_USE_LAPACKE
+
 bool loadConfig(YAML::Node &config, GINSOptions &options);
 void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile);
 void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile);
@@ -171,6 +172,13 @@ int main(int argc, char *argv[]) {
         PvtFileLoader gnssfile(gnsspath);
         // ResPppFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
+        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                    timestamp, navstate, cov, interval, percent, lastpercent)) {
+            return -1;
+        }
+    } else if (newtype == 6) {
+        PvtFileLoader gnssfile(gnsspath);
+        YisFileLoader imufile(imupath);
         if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
@@ -354,7 +362,7 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
     // 保存导航结果
     // save navigation result
     if (fabs(time - (int) time) < 0.01) {
-    // if (1) {
+        // if (1) {
 #if 1
 
         result.clear();
@@ -529,7 +537,7 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
             if (giengine.isAligned) {
                 while (1) {
                     imu_cur = imufile.next();
-                    if (imu_cur.time > giengine.alignedTime || imufile.isEof()) {
+                    if (imu_cur.time >= giengine.alignedTime || imufile.isEof()) {
                         giengine.newImuProcess();
                         break;
                     }
@@ -538,6 +546,7 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
             }
             continue;
         }
+        // usleep(1000);  // 1ms
     }
 
     // 关闭打开的文件

@@ -23,8 +23,10 @@
 #ifndef GI_ENGINE_H
 #define GI_ENGINE_H
 #include <Eigen/Dense>
+#include <cstdlib>
 #include <deque>
 
+#include "common/logging.h"
 #include "common/rotation.h"
 #include "common/types.h"
 
@@ -58,15 +60,15 @@ public:
         imu_.dvel   = C_imu_body * imu_.dvel;
         imupre_     = imucur_;
         imucur_     = imu_;
+        if (compensate) {
+            imuCompensate(imucur_);
+        }
         if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= 10.0) {
             imuwindow_.push_back(imucur_);
         } else {
             // 退一个头部元素，在尾部插入一个新元素
             imuwindow_.pop_front();
             imuwindow_.push_back(imucur_);
-        }
-        if (compensate) {
-            imuCompensate(imucur_);
         }
     }
 
@@ -181,16 +183,46 @@ public:
     void checkCov() {
 
         for (int i = 0; i < RANK; i++) {
+#if 0
+            if (i >= 0 && i <= 2) {
+                if (Cov_(i, i) < 0.01) {
+                    Cov_(i, i) = 0.01;
+                }
+            } else if (i >= 3 && i <= 5) {
+                if (Cov_(i, i) < 0.01) {
+                    Cov_(i, i) = 0.01;
+                }
+            } else if (i >= 6 && i <= 8) {
+                if (Cov_(i, i) < 1.0 * D2R) {
+                    Cov_(i, i) = 1.0 * D2R;
+                }
+            } else if (i >= 9 && i <= 11) {
+                if (Cov_(i, i) < 0.01 * D2R / 3600) {
+                    Cov_(i, i) = 0.01 * D2R / 3600;
+                }
+            } else if (i >= 12 && i <= 14) {
+                if (Cov_(i, i) < 1 * 1e-5) {
+                    Cov_(i, i) = 1 * 1e-5;
+                }
+            } else {
+                if (Cov_(i, i) < 0) {
+                    std::cout << "Covariance matrix error at index " << i << std::endl;
+                    std::exit(EXIT_FAILURE);
+                }
+            }
+#else
             if (Cov_(i, i) < 0) {
                 std::cout << "Covariance is negative at " << std::setprecision(10) << timestamp_ << " !" << std::endl;
                 std::exit(EXIT_FAILURE);
             }
+#endif
         }
     }
     void updatePva() {
         pvapre_        = pvacur_;
         imupre_        = imucur_;
         pvacur_.status = 0;
+        updatetime     = gnssdata_.time;
     }
     /**
      * @brief 进行INS状态更新(IMU机械编排算法), 并计算IMU状态转移矩阵和噪声阵

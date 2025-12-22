@@ -173,11 +173,6 @@ void GIEngine::imuCompensate(IMU &imu) {
 
 void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
 
-    if (engineopt_.enable_zupt && isStatic(average)) {
-        int nv = zupt(pvacur_);
-        pvacur_.status |= 0b0100;
-    }
-
     // 对当前IMU数据(imucur)补偿误差, 上一IMU数据(imupre)已经补偿过了
     // compensate imu error to 'imucur', 'imupre' has been compensated
     imuCompensate(imucur);
@@ -312,6 +307,10 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // EKF预测传播系统协方差和系统误差状态
     // do EKF predict to propagate covariance and error state
     EKFPredict(Phi, Qd);
+    if (engineopt_.enable_zupt && isStatic(average)) {
+        int nv = zupt(pvacur_);
+        pvacur_.status |= 0b0100;
+    }
     // 使用NHC添加约束
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
@@ -358,7 +357,6 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     if (engineopt_.enable_gnss_pos) {
         EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
     }
-
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
     H_gnssvel.resize(3, Cov_.rows());
@@ -384,7 +382,6 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
-    updatetime = gnssdata.time;
     gnssdata.isvalid = false;
     pvacur_.status |= 0b0001;
 }
@@ -635,6 +632,7 @@ int GIEngine::nhc(PVA pvacur_) {
 
     if (nv > 1) {
         EKFUpdate(dz, H, R, KFFilterType::EKF);
+        // stateNHCFeedback();
         stateFeedback();
         // std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
     }
@@ -652,10 +650,11 @@ int GIEngine::zupt(PVA pvacur_) {
     dz(0)   = vn[0];
     dz(1)   = vn[1];
     dz(2)   = vn[2];
-    R(0, 0) = pow(1, 2);
-    R(1, 1) = pow(1, 2);
-    R(2, 2) = pow(1, 2);
-    EKFUpdate(dz, H, R, KFFilterType::Huber);
+    R(0, 0) = pow(0.01, 2);
+    R(1, 1) = pow(0.01, 2);
+    R(2, 2) = pow(0.01, 2);
+    EKFUpdate(dz, H, R, KFFilterType::EKF);
+    // stateZUPTFeedback();
     stateFeedback();
     // pvapre_.vel.setZero();
     // pvacur_.vel.setZero();
@@ -752,9 +751,18 @@ bool GIEngine::isTurning() {
 void GIEngine::alignProcess() {
     std::vector<double> average;
     average.resize(6);
+    // imuerror_.accbias = {-698.899350201593 * 1e-5, 122.994345195816 * 1e-5, -423.774345768206 * 1e-5};
     if (isStatic(average)) {
         getImuHorizonalAttitude(average, gnssdata_.blh);
-        imuerror_.gyrbias     = Eigen::Vector3d(average[0], average[1], average[2]);
+        if (fabs(average[0]) > 1000 * D2R / 3600 || fabs(average[1]) > 1000 * D2R / 3600 ||
+            fabs(average[2]) > 1000 * D2R / 3600) {
+            imuerror_.gyrbias = Eigen::Vector3d(116.42753349275559 * D2R / 3600, 478.9707857316993 * D2R / 3600,
+                                                -180.8378315796083 * D2R / 3600);
+        } else {
+            imuerror_.gyrbias = Eigen::Vector3d(average[0], average[1], average[2]);
+            // imuerror_.gyrbias.setZero();
+            // imuerror_.accbias.setZero();
+        }
         haveHorizonalAttitude = true;
     } else {
         if (haveHorizonalAttitude && gnssdata_.isvalid && gnssdata_.vel.norm() > 2.0) {
@@ -769,6 +777,14 @@ void GIEngine::alignProcess() {
             alignedTime          = gnssdata_.time;
             alignedWeek          = gnssdata_.week;
             print_init_info();
+            while (!imuwindow_.empty()) {
+                IMU imu = imuwindow_.front();
+                if (imu.week < alignedWeek || (imu.week == alignedWeek && imu.time <= alignedTime)) {
+                    imuwindow_.pop_front();
+                } else {
+                    break;
+                }
+            }
         }
     }
 }

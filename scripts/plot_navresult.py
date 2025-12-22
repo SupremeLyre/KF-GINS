@@ -446,12 +446,13 @@ if __name__ == "__main__":
     # path = "./dataset/20250103/pppimu"
     # path = "./dataset/20250318/pppimu"
     # path = "./dataset/20250915/pppimu"
-    path = "./dataset/20251011/pppimu1"
+    # path = "./dataset/20251011/pppimu1"
     # path = "./dataset/20251105/pppimu1"
     # path = "./dataset/example"
+    path = "./dataset/20251206/pppimu1"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"
-    refresult_filepath = path + "/../truth.txt"
+    refresult_filepath = path + "/../truth_complex.txt"
     # refresult_filepath = path + "/truth.nav"
     # 导航结果
     # plotNavresult(navresult_filepath,0)
