@@ -12,7 +12,7 @@ public:
     }
 
     const GNSS &next() {
-        data_ = load();
+        data_      = load();
         gnss_.week = data_[0];
         gnss_.time = data_[1];
         memcpy(gnss_.blh.data(), &data_[2], 3 * sizeof(double));
@@ -21,6 +21,8 @@ public:
         memcpy(gnss_.vstd.data(), &data_[11], 3 * sizeof(double));
         gnss_.blh[0] *= D2R;
         gnss_.blh[1] *= D2R;
+        gnss_.isPosValid = true;
+        gnss_.isVelValid = true;
 
         return gnss_;
     }

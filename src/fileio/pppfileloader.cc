@@ -11,7 +11,7 @@ bool PPPFileLoader::load_() {
     if (isEof())
         return false;
     data_.resize(columns_);
-    FILE *fp = fopen("./res_vxyz.txt", "a");
+    // FILE *fp = fopen("./res_vxyz.txt", "a");
     string line;
     std::getline(filefp_, line);
     std::stringstream iss(line);
@@ -49,13 +49,13 @@ bool PPPFileLoader::load_() {
     vned << temper.vxyz[0], temper.vxyz[1], temper.vxyz[2];
     vned = Earth::cne(blh).transpose() * vned;
     // 输出时间，vned到文件
-    fprintf(fp, "%d,%.3f,%.3f,%.3f,%.3f\n", week, tow, vned[0], vned[1], vned[2]);
+    // fprintf(fp, "%d,%.3f,%.3f,%.3f,%.3f\n", week, tow, vned[0], vned[1], vned[2]);
     for (auto i = 0; i < 3; i++) {
         temper.blh[i]      = blh[i];
         temper.std_ned[i]  = 1.0;
         temper.std_vned[i] = 0.01;
         temper.vned[i]     = vned[i];
     }
-    fclose(fp);
+    // fclose(fp);
     return stat;
 }

@@ -23,6 +23,7 @@
 #include "common/angle.h"
 #include "fileio/adisbinaryloader.hpp"
 #include "fileio/adisfileloader.hpp"
+#include "fileio/asm330fileloader.hpp"
 #include "fileio/filesaver.h"
 #include "fileio/gnssfileloader.h"
 #include "fileio/imufileloader.h"
@@ -35,6 +36,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "common/logging.h"
+#include "fileio/ksxtfileloader.hpp"
 #include "fileio/posfileloader.hpp"
 #include "fileio/pppfileloader.hpp"
 #include "fileio/pvtfileloader.hpp"
@@ -179,6 +181,13 @@ int main(int argc, char *argv[]) {
     } else if (newtype == 6) {
         PvtFileLoader gnssfile(gnsspath);
         YisFileLoader imufile(imupath);
+        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                    timestamp, navstate, cov, interval, percent, lastpercent)) {
+            return -1;
+        }
+    } else if (newtype == 7) {
+        KsxtFileLoader gnssfile(gnsspath);
+        Asm330FileLoader imufile(imupath);
         if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
@@ -361,8 +370,8 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
 
     // 保存导航结果
     // save navigation result
-    if (fabs(time - (int) time) < 0.01) {
-        // if (1) {
+    // if (fabs(time - (int) time) < 0.01) {
+        if (1) {
 #if 1
 
         result.clear();

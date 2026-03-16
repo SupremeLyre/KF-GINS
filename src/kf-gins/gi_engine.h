@@ -152,6 +152,8 @@ public:
     void alignProcess();
     void finishAlignNow();
     std::vector<double> average;
+    Eigen::Vector3d current_acc_std_ = Eigen::Vector3d::Zero();
+    Eigen::Vector3d current_gyr_std_ = Eigen::Vector3d::Zero();
     // 加速度计平均值求水平姿态
     bool getImuHorizonalAttitude(std::vector<double> &average, Vector3d &blh) {
         Vector3d gn = {0, 0, Earth::gravity(blh)};
@@ -307,7 +309,8 @@ private:
      * @param [in] R  观测噪声阵
      *                measurement noise matrix
      * */
-    void EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType filter_type);
+    void EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType filter_type,
+                   bool enable_adaptive = false);
 
     /**
      * @brief 检查协方差对角线元素是否都为正
@@ -333,6 +336,9 @@ private:
     GNSS gnssdata_;
     // IMU 原始数据滑动窗口
     std::deque<IMU> imuwindow_;
+    // 对齐过程统计
+    int align_update_count_ = 0;
+    std::vector<Eigen::Vector3d> gyro_bias_history_;
 
     // IMU状态（位置、速度、姿态和IMU误差）
     // imu state (position, velocity, attitude and imu error)
@@ -346,7 +352,10 @@ private:
     Eigen::MatrixXd Qc_;
     Eigen::MatrixXd dx_;
     const int RANK      = 21;
+    const int RANKLITE    = 15;
+    const int RANKNHC = 17;
     const int NOISERANK = 18;
+    const int NOISERANKLITE = 12;
     // 状态ID和噪声ID
     // state ID and noise ID
     enum StateID {
@@ -357,6 +366,8 @@ private:
         BA_ID  = 12,
         SG_ID  = 15,
         SA_ID  = 18,
+        PITCH_ID = 15,
+        HEADING_ID = 16,
     };
     enum NoiseID { VRW_ID = 0, ARW_ID = 3, BGSTD_ID = 6, BASTD_ID = 9, SGSTD_ID = 12, SASTD_ID = 15 };
 };

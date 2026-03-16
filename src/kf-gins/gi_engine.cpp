@@ -32,6 +32,202 @@
 #include <format>
 #include <glog/logging.h>
 
+// Helper Namespace for ZUPT Decision Tree
+namespace DecisionTreeZUPT {
+
+struct Node {
+    bool is_leaf;
+    int feature_index; // 0: acc_std_norm, 1: gyr_std_norm
+    double threshold;
+    Eigen::Vector3d value; // For leaf: velocity measurement noise std (m/s)
+    Node *left  = nullptr;
+    Node *right = nullptr;
+
+    // Leaf constructor
+    Node(Eigen::Vector3d v)
+        : is_leaf(true)
+        , feature_index(-1)
+        , threshold(0)
+        , value(v) {
+    }
+    // Internal node constructor
+    Node(int idx, double th, Node *l, Node *r)
+        : is_leaf(false)
+        , feature_index(idx)
+        , threshold(th)
+        , value(Eigen::Vector3d::Zero())
+        , left(l)
+        , right(r) {
+    }
+
+    ~Node() {
+        if (left)
+            delete left;
+        if (right)
+            delete right;
+    }
+};
+
+class Tree {
+public:
+    Tree() {
+        // Construct a simple decision tree for ZUPT covariance adaptation
+        // Logic:
+        // If AccStd < 0.015 m/s^2:
+        //     If GyrStd < 0.005 rad/s: -> Very High Confidence (Noise: 0.01 m/s)
+        //     Else: -> High Confidence (Noise: 0.02 m/s)
+        // Else:
+        //     If AccStd < 0.05 m/s^2: -> Medium Confidence (Noise: 0.05 m/s)
+        //     Else: -> Low Confidence (Noise: 0.10 m/s)
+
+        Node *leaf_very_high = new Node(Eigen::Vector3d(0.01, 0.01, 0.01));
+        Node *leaf_high      = new Node(Eigen::Vector3d(0.02, 0.02, 0.01));
+        Node *leaf_medium    = new Node(Eigen::Vector3d(0.05, 0.05, 0.01));
+        Node *leaf_low       = new Node(Eigen::Vector3d(0.10, 0.10, 0.01));
+
+        Node *split_gyr   = new Node(1, 0.005, leaf_very_high, leaf_high);
+        Node *split_acc_2 = new Node(0, 0.05, leaf_medium, leaf_low);
+
+        root = new Node(0, 0.015, split_gyr, split_acc_2);
+    }
+
+    ~Tree() {
+        if (root)
+            delete root;
+    }
+
+    Eigen::Vector3d predict(const Eigen::Vector3d &acc_std, const Eigen::Vector3d &gyr_std) {
+        Node *current = root;
+        while (current && !current->is_leaf) {
+            double feature_val = 0.0;
+            if (current->feature_index == 0)
+                feature_val = acc_std.norm();
+            else if (current->feature_index == 1)
+                feature_val = gyr_std.norm();
+
+            if (feature_val <= current->threshold) {
+                current = current->left;
+            } else {
+                current = current->right;
+            }
+        }
+        return current ? current->value : Eigen::Vector3d(0.02, 0.02, 0.01); // Default fallback
+    }
+
+private:
+    Node *root = nullptr;
+};
+
+// Singleton instance
+static Tree &getInstance() {
+    static Tree instance;
+    return instance;
+}
+
+} // namespace DecisionTreeZUPT
+
+// Helper Namespace for NHC Decision Tree
+namespace DecisionTreeNHC {
+
+struct Node {
+    bool is_leaf;
+    int feature_index; // 0: forward_velocity, 1: abs_gyro_z
+    double threshold;
+    Eigen::Vector2d value; // For leaf: lateral, vertical noise std (m/s)
+    Node *left  = nullptr;
+    Node *right = nullptr;
+
+    // Leaf constructor
+    Node(Eigen::Vector2d v)
+        : is_leaf(true)
+        , feature_index(-1)
+        , threshold(0)
+        , value(v) {
+    }
+    // Internal node constructor
+    Node(int idx, double th, Node *l, Node *r)
+        : is_leaf(false)
+        , feature_index(idx)
+        , threshold(th)
+        , value(Eigen::Vector2d::Zero())
+        , left(l)
+        , right(r) {
+    }
+
+    ~Node() {
+        if (left)
+            delete left;
+        if (right)
+            delete right;
+    }
+};
+
+class Tree {
+public:
+    Tree() {
+        // Construct a simple decision tree for NHC covariance adaptation
+        // Logic:
+        // If AbsGyroZ > 5 deg/s (Turning):
+        //     Lateral Noise: 1.0 m/s (Loose)
+        //     Vertical Noise: 2.0 m/s (Loose)
+        // Else (Straight):
+        //     If ForwardVel > 10 m/s:
+        //          Lateral Noise: 0.05 m/s (Tight, high dynamic stability)
+        //          Vertical Noise: 0.10 m/s
+        //     Else (Low speed):
+        //          Lateral Noise: 0.10 m/s
+        //          Vertical Noise: 0.10 m/s
+
+        Node *leaf_turning             = new Node(Eigen::Vector2d(0.05, 0.5));
+        Node *leaf_straight_high_speed = new Node(Eigen::Vector2d(0.05, 0.5));
+        Node *leaf_straight_low_speed  = new Node(Eigen::Vector2d(0.05, 0.5));
+
+        // Split on Velocity
+        Node *split_vel =
+            new Node(0, 10.0, leaf_straight_low_speed, leaf_straight_high_speed); // left <= th, right > th
+
+        // Root splits on Gyro Z
+        // If gyro <= 5 deg/s (approx 0.087 rad/s) -> Straight (check vel)
+        // Else -> Turning
+        double gyro_th = 5.0 * D2R;
+        root           = new Node(1, gyro_th, split_vel, leaf_turning);
+    }
+
+    ~Tree() {
+        if (root)
+            delete root;
+    }
+
+    Eigen::Vector2d predict(double forward_vel, double abs_gyro_z) {
+        Node *current = root;
+        while (current && !current->is_leaf) {
+            double feature_val = 0.0;
+            if (current->feature_index == 0)
+                feature_val = forward_vel;
+            else if (current->feature_index == 1)
+                feature_val = abs_gyro_z;
+
+            if (feature_val <= current->threshold) {
+                current = current->left;
+            } else {
+                current = current->right;
+            }
+        }
+        return current ? current->value : Eigen::Vector2d(0.05, 0.5);
+    }
+
+private:
+    Node *root = nullptr;
+};
+
+// Singleton instance
+static Tree &getInstance() {
+    static Tree instance;
+    return instance;
+}
+
+} // namespace DecisionTreeNHC
+
 GIEngine::GIEngine(GINSOptions &options) {
 
     this->options_   = options;
@@ -42,9 +238,15 @@ GIEngine::GIEngine(GINSOptions &options) {
 
     // 设置协方差矩阵，系统噪声阵和系统误差状态矩阵大小
     // resize covariance matrix, system noise matrix, and system error state matrix
-    Cov_.resize(RANK, RANK);
-    Qc_.resize(NOISERANK, NOISERANK);
-    dx_.resize(RANK, 1);
+    if (options.engineopt.estimate_scale) {
+        Cov_.resize(RANK, RANK);
+        Qc_.resize(NOISERANK, NOISERANK);
+        dx_.resize(RANK, 1);
+    } else {
+        Cov_.resize(RANKLITE, RANKLITE);
+        Qc_.resize(NOISERANKLITE, NOISERANKLITE);
+        dx_.resize(RANKLITE, 1);
+    }
     Cov_.setZero();
     Qc_.setZero();
     dx_.setZero();
@@ -189,7 +391,11 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     Phi.resizeLike(Cov_);
     F.resizeLike(Cov_);
     Qd.resizeLike(Cov_);
-    G.resize(RANK, NOISERANK);
+    if (engineopt_.estimate_scale) {
+        G.resize(RANK, NOISERANK);
+    } else {
+        G.resize(RANKLITE, NOISERANKLITE);
+    }
     Phi.setIdentity();
     F.setZero();
     Qd.setZero();
@@ -309,6 +515,9 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     EKFPredict(Phi, Qd);
     if (engineopt_.enable_zupt && isStatic(average)) {
         int nv = zupt(pvacur_);
+        // imuerror_.gyrbias[0] = average[0];
+        // imuerror_.gyrbias[1] = average[1];
+        // imuerror_.gyrbias[2] = average[2];
         pvacur_.status |= 0b0100;
     }
     // 使用NHC添加约束
@@ -354,8 +563,8 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
 
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
-    if (engineopt_.enable_gnss_pos) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
+    if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
+        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber, 1);
     }
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -377,13 +586,15 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // GNSS速度量测新息
     Eigen::MatrixXd dz_vel;
     dz_vel = antenna_vel - gnssdata.vel;
-    if (engineopt_.enable_gnss_vel) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber);
+    if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber, 1);
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
     gnssdata.isvalid = false;
-    pvacur_.status |= 0b0001;
+    if (gnssdata.isPosValid || gnssdata.isVelValid) {
+        pvacur_.status |= 0b0001;
+    }
 }
 
 int GIEngine::isToUpdate(double imutime1, double imutime2, double updatetime) const {
@@ -420,13 +631,15 @@ void GIEngine::EKFPredict(Eigen::MatrixXd &Phi, Eigen::MatrixXd &Qd) {
     dx_ = Phi * dx_;
 }
 
-void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType type) {
+void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType type,
+                         bool enable_adaptive) {
 
     assert(H.cols() == Cov_.rows());
     assert(dz.rows() == H.rows());
     assert(dz.rows() == R.rows());
     assert(dz.cols() == 1);
     // 抗差处理：计算标准化残差并调整观测值噪声矩阵
+    double alpha_k        = 1.0;
     Eigen::MatrixXd adj_R = R;
     switch (type) {
         case KFFilterType::Huber: {
@@ -481,13 +694,30 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
                 }
             }
             break;
-            break;
         }
     }
     // 计算Kalman增益
     // Compute Kalman Gain
-    auto temp         = H * Cov_ * H.transpose() + adj_R;
-    Eigen::MatrixXd K = Cov_ * H.transpose() * temp.inverse();
+    if (enable_adaptive) {
+        Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
+        Eigen::MatrixXd S    = HPHt + adj_R;
+        // 预测残差 v_norm
+        // prediction residual v_norm
+        // (dz*dz^T)/tr(H*P*H^T+R)^(1/2)
+        double v_norm = dz.squaredNorm() / sqrt(S.trace());
+
+        // Huber权函数阈值
+        // Huber weight function threshold
+        double k0 = 1.01;
+
+        if (v_norm <= k0) {
+            alpha_k = 1.0;
+        } else {
+            alpha_k = k0 / v_norm;
+        }
+    }
+    auto temp         = 1.0 / alpha_k * H * Cov_ * H.transpose() + adj_R;
+    Eigen::MatrixXd K = 1.0 / alpha_k * Cov_ * H.transpose() * temp.inverse();
 
     // 更新系统误差状态和协方差
     // update system error state and covariance
@@ -613,23 +843,37 @@ int GIEngine::nhc(PVA pvacur_) {
             dz(nv) = vb[i];
 
             // R(nv, nv) = pow(1, 2);
+#if 0
+            // Generate NHC covariance using Decision Tree
+            Eigen::Vector2d nhc_noise = DecisionTreeNHC::getInstance().predict(fabs(vb[0]), fabs(imucur_.omega[2]));
+            if (i == 1) { // Lateral
+                R(nv, nv) = pow(nhc_noise[0], 2);
+            } else { // Vertical
+                R(nv, nv) = pow(nhc_noise[1], 2);
+            }
+#else
+            if (i == 1) {
+                R(nv, nv) = pow(0.05, 2);
+            } else {
+                R(nv, nv) = pow(0.1, 2);
+            }
+#endif
             nv++;
         }
     }
-// Logging::printMatrix(H);
-#if 0
-    if (isTurning()) {
-        R(0, 0) = pow(0.05, 2);
-        R(1, 1) = pow(2, 2);
-    } else {
-        R(0, 0) = pow(100, 2);
-        R(1, 1) = pow(100, 2);
-    }
-#else
-    R(0, 0) = pow(0.05, 2);
-    R(1, 1) = pow(2, 2);
-#endif
-
+    // Logging::printMatrix(H);
+    // #if 0
+    //         if (isTurning()) {
+    //             R(0, 0) = pow(0.05, 2);
+    //             R(1, 1) = pow(2, 2);
+    //         } else {
+    //             R(0, 0) = pow(100, 2);
+    //             R(1, 1) = pow(100, 2);
+    //         }
+    // #else
+    //     R(0, 0) = pow(0.04, 2);
+    //     R(1, 1) = pow(2, 2);
+    // #endif
     if (nv > 1) {
         EKFUpdate(dz, H, R, KFFilterType::EKF);
         // stateNHCFeedback();
@@ -647,12 +891,21 @@ int GIEngine::zupt(PVA pvacur_) {
     H.resize(3, Cov_.rows());
     H.setZero();
     H.block(0, V_ID, 3, 3) << Matrix3d::Identity();
-    dz(0)   = vn[0];
-    dz(1)   = vn[1];
-    dz(2)   = vn[2];
-    R(0, 0) = pow(0.01, 2);
-    R(1, 1) = pow(0.01, 2);
+    dz(0) = vn[0];
+    dz(1) = vn[1];
+    dz(2) = vn[2];
+#if 1
+    // Generate ZUPT covariance using Decision Tree
+    Eigen::Vector3d noise_std = DecisionTreeZUPT::getInstance().predict(current_acc_std_, current_gyr_std_);
+    R(0, 0)                   = pow(noise_std[0], 2);
+    R(1, 1)                   = pow(noise_std[1], 2);
+    R(2, 2)                   = pow(noise_std[2], 2);
+#else
+    R(0, 0) = pow(0.02, 2);
+    R(1, 1) = pow(0.02, 2);
     R(2, 2) = pow(0.01, 2);
+#endif
+
     EKFUpdate(dz, H, R, KFFilterType::EKF);
     // stateZUPTFeedback();
     stateFeedback();
@@ -696,13 +949,20 @@ bool GIEngine::isStatic(std::vector<double> &average) {
         accstd /= imuwindow_.size();
         // 开方
         accstd = accstd.cwiseSqrt();
+        // ...existing code...
         for (auto imu : imuwindow_) {
             gyrstd += (imu.omega - gyromean).cwiseProduct(imu.omega - gyromean);
         }
         gyrstd /= imuwindow_.size();
         gyrstd = gyrstd.cwiseSqrt();
+
+        // Save std devs for ZUPT covariance generation
+        current_acc_std_ = accstd;
+        current_gyr_std_ = gyrstd;
+
         // 计算当前历元加速度角速度与均值的差
         resacc = imucur_.accel - accmean;
+        // ...existing code...
         resgyr = imucur_.omega - gyromean;
         // 3-sigma准则检验当前IMU数值是否异常
         if (resacc.norm() < 3 * accstd.norm() && resgyr.norm() < 3 * gyrstd.norm()) {
@@ -754,12 +1014,31 @@ void GIEngine::alignProcess() {
     // imuerror_.accbias = {-698.899350201593 * 1e-5, 122.994345195816 * 1e-5, -423.774345768206 * 1e-5};
     if (isStatic(average)) {
         getImuHorizonalAttitude(average, gnssdata_.blh);
-        if (fabs(average[0]) > 1000 * D2R / 3600 || fabs(average[1]) > 1000 * D2R / 3600 ||
-            fabs(average[2]) > 1000 * D2R / 3600) {
-            imuerror_.gyrbias = Eigen::Vector3d(116.42753349275559 * D2R / 3600, 478.9707857316993 * D2R / 3600,
-                                                -180.8378315796083 * D2R / 3600);
-        } else {
+        // 100s静止查看陀螺零偏是否稳定
+        bool stop_update = false;
+        if (align_update_count_ >= 100) {
+            Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+            for (const auto &val : gyro_bias_history_) {
+                sum += val;
+            }
+            Eigen::Vector3d mean   = sum / gyro_bias_history_.size();
+            Eigen::Vector3d sq_sum = Eigen::Vector3d::Zero();
+            for (const auto &val : gyro_bias_history_) {
+                Eigen::Vector3d diff = val - mean;
+                sq_sum += diff.cwiseProduct(diff);
+            }
+            Eigen::Vector3d std = (sq_sum / gyro_bias_history_.size()).cwiseSqrt();
+            if (std[0] < 2 * options_.initstate_std.imuerror.gyrbias[0] &&
+                std[1] < 2 * options_.initstate_std.imuerror.gyrbias[0] &&
+                std[2] < 2 * options_.initstate_std.imuerror.gyrbias[0]) {
+                stop_update = true;
+            }
+        }
+        // 不稳定的话继续更新陀螺零偏
+        if (!stop_update) {
             imuerror_.gyrbias = Eigen::Vector3d(average[0], average[1], average[2]);
+            gyro_bias_history_.push_back(imuerror_.gyrbias);
+            align_update_count_++;
             // imuerror_.gyrbias.setZero();
             // imuerror_.accbias.setZero();
         }

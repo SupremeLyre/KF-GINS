@@ -38,6 +38,13 @@ public:
             gnss_.vel  = {temper.vel[0], temper.vel[1], -temper.vel[2]};
             gnss_.vstd = {fabs(temper.vstd[0]), fabs(temper.vstd[1]), fabs(temper.vstd[2])};
         }
+        if (temper.status >= 34 && temper.status <= 69 && temper.nsat > 8) {
+            gnss_.isPosValid = true;
+            gnss_.isVelValid = true;
+        } else {
+            gnss_.isPosValid = false;
+            gnss_.isVelValid = false;
+        }
         return gnss_;
     }
 
@@ -70,10 +77,6 @@ private:
         Vector3d vned    = Earth::cne(blh).transpose() * Vector3d(temper.vxyz[0], temper.vxyz[1], temper.vxyz[2]);
         temper.vel       = {vned[0], vned[1], -vned[2]};
 #endif
-        if (temper.status > 34 && temper.status <= 50 && temper.nsat > 8) {
-            return true;
-        } else {
-            return false;
-        }
+        return true;
     }
 };

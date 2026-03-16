@@ -49,7 +49,8 @@ public:
         }
         gnss_.blh[0] *= D2R;
         gnss_.blh[1] *= D2R;
-
+        gnss_.isPosValid = true;
+        gnss_.isVelValid = false;
         return gnss_;
     }
 

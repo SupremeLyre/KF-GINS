@@ -89,7 +89,7 @@ static std::condition_variable cv;
 static inline bool sensor_event_earlier(const SensorEvent &a, const SensorEvent &b) {
     if (a.week != b.week)
         return a.week < b.week;
-    return fabs(a.time - b.time) < 0.1;
+    return a.time < b.time;
 }
 // 按时间有序插入到 deque 中
 void push_sensor_event_sorted(const SensorEvent &ev) {
@@ -224,14 +224,29 @@ int main(int argc, char *argv[]) {
                 if (ev.kind == SensorEventKind::IMU) {
                     giengine.addImuData(ev.imudata, true);
                     imu_pre = imu_cur;
-                    // 下一秒imu已经来了却还在等gnss输出，输出一下imu的结果
-                    if (fabs(imu_pre.time - round(imu_pre.time)) < 0.01 && wait_integer_gnss_out) {
-                        giengine.checkCov();
-                        NavState navstate_  = giengine.getNavState();
-                        Eigen::MatrixXd Cov = giengine.getCovariance();
-                        PPIGINSFormat(fp_ppi, navstate_, imu_cur.week, imu_cur.time, Cov);
-                        wait_integer_gnss_out = false;
+                    
+                    // 寻找最接近整秒的时刻输出 (Local Minimum Logic)
+                    if (wait_integer_gnss_out) {
+                        double target_time = round(imu_pre.time);
+                        double prev_diff = fabs(imu_pre.time - target_time);
+                        double curr_diff = fabs(ev.imudata.time - target_time);
+                        
+                        // 如果距离整秒时刻变远了，说明上一时刻(imu_pre)就是最优点(或者GNSS没来)
+                        if (curr_diff > prev_diff) {
+                             // 回溯输出 imu_pre 的状态 (注意: giengine 此时状态对应 imu_pre, 下面 insPropagation 完后才对应 imu_cur)
+                             // 但 giengine.getNavState() 需要在 propagation 之前调用才能从内部取到旧状态吗?
+                             // 实际上 process 循环中, giengine 状态是累积的.
+                             // 下面的 updatePva / insPropagation 将把状态从 imu_pre 推到 imu_cur.
+                             // 所以在推演之前, giengine 的状态就是 imu_pre 时刻的状态.
+                             giengine.checkCov();
+                             NavState ns_pre = giengine.getNavState();
+                             Eigen::MatrixXd Cov_pre = giengine.getCovariance();
+                             PPIGINSFormat(fp_ppi, ns_pre, imu_pre.week, imu_pre.time, Cov_pre);
+                             wait_integer_gnss_out = false;
+                             end_time = target_time; // 标记该整秒已作为IMU推算值输出
+                        }
                     }
+
                     imu_cur = ev.imudata;
                     giengine.updatePva();
                     giengine.insPropagation(imu_pre, imu_cur);
@@ -244,20 +259,34 @@ int main(int argc, char *argv[]) {
                     giengine.gnssUpdate(gnss);
                     giengine.stateFeedback();
                     updatedGnss = false;
+                    
+                    // GNSS 更新时刻直接输出组合结果
+                    giengine.checkCov();
+                    NavState ns_gnss = giengine.getNavState();
+                    Eigen::MatrixXd Cov_gnss = giengine.getCovariance();
+                    PPIGINSFormat(fp_ppi, ns_gnss, imu_cur.week, imu_cur.time, Cov_gnss);
+                    
+                    // 标记该整秒已输出
+                    wait_integer_gnss_out = false;
+                    end_time = round(gnss.time); 
                 }
+                
+                // 检查是否需要开始等待新整秒的输出
                 giengine.checkCov();
-                NavState navstate_  = giengine.getNavState();
-                Eigen::MatrixXd Cov = giengine.getCovariance();
-                if (fabs(imu_cur.time - round(imu_cur.time)) < 0.01) {
-                    // 整秒时刻等待GNSS输出，只输出组合结果
-                    if (navstate_.status & 0b0001) {
-                        PPIGINSFormat(fp_ppi, navstate_, imu_cur.week, imu_cur.time, Cov);
-                        wait_integer_gnss_out = false;
-                    } else {
+                // NavState navstate_  = giengine.getNavState(); 
+                // Eigen::MatrixXd Cov = giengine.getCovariance();
+                
+                // 窗口放宽到 0.15s, 允许 x.09 等情况
+                double target = round(imu_cur.time);
+                if (fabs(imu_cur.time - target) < 0.15) {
+                    // 如果该整秒还没有输出过 (check against end_time)
+                    if (fabs(end_time - target) > 0.5) {
                         wait_integer_gnss_out = true;
+                    } else {
+                        wait_integer_gnss_out = false;
                     }
                 } else {
-                    PPIGINSFormat(fp_ppi, navstate_, imu_cur.week, imu_cur.time, Cov);
+                    wait_integer_gnss_out = false;
                 }
             }
         }
@@ -291,25 +320,44 @@ int main(int argc, char *argv[]) {
                 temper.vstd      = {vstdned[1], vstdned[0], vstdned[2]};
                 Vector3d vned = Earth::cne(blh).transpose() * Vector3d(temper.vxyz[0], temper.vxyz[1], temper.vxyz[2]);
                 temper.vel    = {vned[1], vned[0], -vned[2]};
-                if (temper.status > 16 && temper.status <= 50 && temper.nsat > 8) {
-                    gnss.week   = temper.week;
-                    gnss.time   = temper.sow;
-                    gnss.blh    = {temper.blh[0] * D2R, temper.blh[1] * D2R, temper.blh[2] + temper.undulation};
-                    gnss.std    = {temper.std[1] * 2, temper.std[0] * 2, temper.std[2] * 3};
-                    gnss.vel    = {temper.vel[1], temper.vel[0], -temper.vel[2]};
-                    gnss.vstd   = {fabs(temper.vstd[1] * 5), fabs(temper.vstd[0] * 5), fabs(temper.vstd[2] * 5)};
-                    updatedGnss = true;
-                    ev.kind     = SensorEventKind::GNSS;
-                    ev.time     = gnss.time;
-                    ev.week     = gnss.week;
-                    ev.gnssdata = gnss;
-                    // sensor_events.push_back(ev);
-                    {
-                        std::lock_guard lk(m);
-                        push_sensor_event_sorted(ev);
-                    }
-                    cv.notify_one();
+
+                gnss.week   = temper.week;
+                gnss.time   = temper.sow;
+                gnss.blh    = {temper.blh[0] * D2R, temper.blh[1] * D2R, temper.blh[2] + temper.undulation};
+                gnss.std    = {temper.std[1] * 2, temper.std[0] * 2, temper.std[2] * 3};
+                gnss.vel    = {temper.vel[1], temper.vel[0], -temper.vel[2]};
+                gnss.vstd   = {fabs(temper.vstd[1] * 5), fabs(temper.vstd[0] * 5), fabs(temper.vstd[2] * 5)};
+                updatedGnss = true;
+                ev.kind     = SensorEventKind::GNSS;
+                ev.time     = gnss.time;
+                ev.week     = gnss.week;
+                ev.gnssdata = gnss;
+#if 0
+                if (temper.status >= 16 && temper.status <= 69 && temper.nsat > 8) {
+                    gnss.isVelValid = true;
+                } else {
+                    gnss.isVelValid = false;
                 }
+                if (temper.status >= 34 && temper.status <= 69 && temper.nsat > 8) {
+                    gnss.isPosValid = true;
+                } else {
+                    gnss.isPosValid = false;
+                }
+#else
+                if (temper.status > 34 && temper.status <= 69 && temper.nsat > 8) {
+                    gnss.isPosValid = true;
+                    gnss.isVelValid = true;
+                } else {
+                    gnss.isPosValid = false;
+                    gnss.isVelValid = false;
+                }
+#endif
+                // sensor_events.push_back(ev);
+                {
+                    std::lock_guard lk(m);
+                    push_sensor_event_sorted(ev);
+                }
+                cv.notify_one();
             } else if (line[0] == 'I') {
                 sscanf(line.c_str(), "%c,%lf,%d,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%d", &temper.type, &temper.sow,
                        &temper.week, &temper.leap, &temper.temprature, &temper.acc[0], &temper.acc[1], &temper.acc[2],
@@ -328,12 +376,21 @@ int main(int argc, char *argv[]) {
 #else
                 imu_cur_.dt = 1.0 / options.sample_rate;
 #endif
+#if 0
                 imu_cur_.accel << temper.acc[1] * 9.80665, temper.acc[0] * 9.80665, -temper.acc[2] * 9.80665;
                 imu_cur_.omega << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
                 imu_cur_.dvel << temper.acc[1] * 9.80665 * imu_cur_.dt, temper.acc[0] * 9.80665 * imu_cur_.dt,
                     -temper.acc[2] * 9.80665 * imu_cur_.dt;
                 imu_cur_.dtheta << temper.gyr[1] * D2R * imu_cur_.dt, temper.gyr[0] * D2R * imu_cur_.dt,
                     -temper.gyr[2] * D2R * imu_cur_.dt;
+#else
+                imu_cur_.accel << temper.acc[1] / imu_cur_.dt, temper.acc[0] / imu_cur_.dt,
+                    -temper.acc[2] / imu_cur_.dt;
+                imu_cur_.omega << temper.gyr[1] * D2R / imu_cur_.dt, temper.gyr[0] * D2R / imu_cur_.dt,
+                    -temper.gyr[2] * D2R / imu_cur_.dt;
+                imu_cur_.dvel << temper.acc[1], temper.acc[0], -temper.acc[2];
+                imu_cur_.dtheta << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
+#endif
                 imu_cur_.time = temper.sow;
                 imu_cur_.week = temper.week;
                 updatedImu    = true;

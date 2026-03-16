@@ -7,7 +7,7 @@ void INSMechECEF::velUpdateECEF(const PVA &pvapre, PVA &pvacur, const IMU &imupr
     Eigen::Vector3d d_vfb, d_vfe, d_vge, gl, midvel, midpos, midxyz;
     Eigen::Vector3d temp1, temp2, temp3;
     Eigen::Matrix3d cee, I33 = Eigen::Matrix3d::Identity();
-    Eigen::Quaterniond qne, qee, qnn, qbb, q1, q2;
+    Eigen::Quaterniond qee, qbb;
 
     // 旋转效应和双子样划桨效应
     // rotational and sculling motion

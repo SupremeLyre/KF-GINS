@@ -38,6 +38,8 @@ typedef struct GNSS {
     Vector3d vel;
     Vector3d vstd;
     bool isvalid;
+    bool isPosValid;
+    bool isVelValid;
 } GNSS;
 
 typedef struct IMU {

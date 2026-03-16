@@ -18,6 +18,8 @@ public:
             gnss_.std << temper.std_ned[0], temper.std_ned[1], temper.std_ned[2];
             gnss_.vel << temper.vned[0], temper.vned[1], temper.vned[2];
             gnss_.vstd << temper.std_vned[0], temper.std_vned[1], temper.std_vned[2];
+            gnss_.isPosValid = true;
+            gnss_.isVelValid = true;
         }
         return gnss_;
     }
