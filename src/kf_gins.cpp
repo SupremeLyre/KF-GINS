@@ -43,6 +43,7 @@
 #include "fileio/respppfileloader.hpp"
 #include "fileio/yisfileloader.hpp"
 #include "kf-gins/gi_engine.h"
+#include "kf-gins/gi_engine_psi.h"
 #include "kf-gins/kf_gins_types.h"
 
 bool loadConfig(YAML::Node &config, GINSOptions &options);
@@ -53,7 +54,7 @@ int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double
             GNSS &gnss, IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week,
             double &timestamp, NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent,
             int &lastpercent);
-
+enum modelType { PHI = 0, PSI = 1, EQF = 2 };
 int main(int argc, char *argv[]) {
     Logging::initialization(argv);
 
@@ -101,11 +102,17 @@ int main(int argc, char *argv[]) {
     // imudata configuration， data processing interval
     int imudatalen, imudatarate;
     double starttime{}, endtime{-1};
-    int newtype = 0;
+    int newtype         = 0;
+    modelType modeltype = PHI;
     try {
         newtype = config["newtype"].as<int>();
     } catch (YAML::Exception &e) {
         newtype = 0;
+    }
+    try {
+        modeltype = (modelType) config["modeltype"].as<int>();
+    } catch (YAML::Exception &e) {
+        modeltype = PHI;
     }
     try {
         imudatalen  = config["imudatalen"].as<int>();
@@ -137,28 +144,41 @@ int main(int argc, char *argv[]) {
     double interval = 0;
     // 构造GIEngine
     // Construct GIEngine
-    GIEngine giengine(options);
+    std::shared_ptr<GIEngine> giengine;
+    switch (modeltype) {
+        case PHI:
+            giengine = std::make_shared<GIEngine>(options);
+            break;
+        case PSI:
+            giengine = std::make_shared<GIEngine_PSI>(options);
+            break;
+        case EQF:
+            giengine = std::make_shared<GIEngine>(options);
+            break;
+        default:
+            giengine = std::make_shared<GIEngine>(options);
+    }
     GNSS gnss;
     IMU imu_cur;
 
     if (newtype == 1) {
         PPPFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
     } else if (newtype == 2) {
         PosFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
     } else if (newtype == 3) {
         ResPppFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
@@ -166,7 +186,7 @@ int main(int argc, char *argv[]) {
         PvtFileLoader gnssfile(gnsspath);
         // ResPppFileLoader gnssfile(gnsspath);
         AdisBinaryLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
@@ -174,21 +194,21 @@ int main(int argc, char *argv[]) {
         PvtFileLoader gnssfile(gnsspath);
         // ResPppFileLoader gnssfile(gnsspath);
         AdisFileLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
     } else if (newtype == 6) {
         PvtFileLoader gnssfile(gnsspath);
         YisFileLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
     } else if (newtype == 7) {
         KsxtFileLoader gnssfile(gnsspath);
         Asm330FileLoader imufile(imupath);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
@@ -197,7 +217,7 @@ int main(int argc, char *argv[]) {
         // load GNSS file and IMU file
         GnssFileLoader gnssfile(gnsspath);
         ImuFileLoader imufile(imupath, imudatalen, imudatarate);
-        if (process(giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
                     timestamp, navstate, cov, interval, percent, lastpercent)) {
             return -1;
         }
@@ -371,7 +391,7 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
     // 保存导航结果
     // save navigation result
     // if (fabs(time - (int) time) < 0.01) {
-        if (1) {
+    if (1) {
 #if 1
 
         result.clear();
