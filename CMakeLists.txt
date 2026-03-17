@@ -22,6 +22,7 @@ file(GLOB_RECURSE SOURCE
     src/fileio/adisfileloader.cc
     src/fileio/pppfileloader.cc
     src/fileio/posfileloader.cc
+    src/kf-gins/gi_engine_psi.cpp
     src/kf-gins/gi_engine.cpp
     src/kf-gins/insmech.cpp
     src/kf-gins/insmech_ecef.cpp)

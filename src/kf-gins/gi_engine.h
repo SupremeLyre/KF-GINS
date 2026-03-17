@@ -234,7 +234,7 @@ public:
      * @param [in,out] imucur 当前时刻IMU数据
      *                        imudata at the current epoch
      * */
-    void insPropagation(IMU &imupre, IMU &imucur);
+    virtual void insPropagation(IMU &imupre, IMU &imucur);
 
     /**
      * @brief 使用GNSS位置观测更新系统状态
@@ -247,9 +247,9 @@ public:
      * @brief 反馈误差状态到当前状态
      *        feedback error state to the current state
      * */
-    void stateFeedback();
+    virtual void stateFeedback();
 
-private:
+protected:
     /**
      * @brief 初始化系统状态和协方差
      *        initialize state and state covariance
@@ -319,7 +319,7 @@ private:
 
     void print_init_info();
 
-private:
+protected:
     GINSOptions options_;
     GIEngineOpt engineopt_;
     int week_;
@@ -352,8 +352,8 @@ private:
     Eigen::MatrixXd Qc_;
     Eigen::MatrixXd dx_;
     const int RANK      = 21;
-    const int RANKLITE    = 15;
-    const int RANKNHC = 17;
+    const int RANKLITE    = 15; // 15维，不估计IMU比例因子误差
+    const int RANKNHC = 17; // 17维，估计IMU安装角的俯仰角和航向角
     const int NOISERANK = 18;
     const int NOISERANKLITE = 12;
     // 状态ID和噪声ID

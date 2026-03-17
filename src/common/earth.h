@@ -271,6 +271,10 @@ public:
 
         return wenn(rmn, global, vel);
     }
+    /* c系和n系的误差角theta的等效旋转矢量 */
+    static Vector3d dpos2rvec(const Vector3d &blh, const double &dlat, const double &dlon) {
+        return {dlon * cos(blh[0]), -dlat, -dlon * sin(blh[0])};
+    }
 };
 
 #endif // EARTH_H
