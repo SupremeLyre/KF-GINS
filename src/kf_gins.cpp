@@ -39,8 +39,10 @@
 #include "fileio/ksxtfileloader.hpp"
 #include "fileio/posfileloader.hpp"
 #include "fileio/pppfileloader.hpp"
+#include "fileio/pppsolfileloader.hpp"
 #include "fileio/pvtfileloader.hpp"
 #include "fileio/respppfileloader.hpp"
+#include "fileio/sensors_provider.hpp"
 #include "fileio/yisfileloader.hpp"
 #include "kf-gins/gi_engine.h"
 #include "kf-gins/gi_engine_psi.h"
@@ -49,8 +51,7 @@
 bool loadConfig(YAML::Node &config, GINSOptions &options);
 void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfile, FileSaver &imuerrfile);
 void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile);
-template <typename ImuLoader, typename GnssLoader>
-int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double &starttime, double &endtime,
+int process(GIEngine &giengine, IImuFileLoader &imufile, IGnssFileLoader &gnssfile, double &starttime, double &endtime,
             GNSS &gnss, IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week,
             double &timestamp, NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent,
             int &lastpercent);
@@ -160,69 +161,46 @@ int main(int argc, char *argv[]) {
     }
     GNSS gnss;
     IMU imu_cur;
-
-    if (newtype == 1) {
-        PPPFileLoader gnssfile(gnsspath);
-        AdisFileLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else if (newtype == 2) {
-        PosFileLoader gnssfile(gnsspath);
-        AdisFileLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else if (newtype == 3) {
-        ResPppFileLoader gnssfile(gnsspath);
-        AdisFileLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else if (newtype == 4) {
-        PvtFileLoader gnssfile(gnsspath);
-        // ResPppFileLoader gnssfile(gnsspath);
-        AdisBinaryLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else if (newtype == 5) {
-        PvtFileLoader gnssfile(gnsspath);
-        // ResPppFileLoader gnssfile(gnsspath);
-        AdisFileLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else if (newtype == 6) {
-        PvtFileLoader gnssfile(gnsspath);
-        YisFileLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else if (newtype == 7) {
-        KsxtFileLoader gnssfile(gnsspath);
-        Asm330FileLoader imufile(imupath);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
-    } else {
-        // 加载GNSS文件和IMU文件
-        // load GNSS file and IMU file
-        GnssFileLoader gnssfile(gnsspath);
-        ImuFileLoader imufile(imupath, imudatalen, imudatarate);
-        if (process(*giengine, imufile, gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
-                    timestamp, navstate, cov, interval, percent, lastpercent)) {
-            return -1;
-        }
+    std::string gnss_loader_type = "standard";
+    if (config["gnss_loader_type"]) {
+        gnss_loader_type = config["gnss_loader_type"].as<std::string>();
     }
-
+    std::string imu_loader_type = "standard";
+    if (config["imu_loader_type"]) {
+        imu_loader_type = config["imu_loader_type"].as<std::string>();
+    }
+    std::unique_ptr<IGnssFileLoader> gnssfile;
+    std::unique_ptr<IImuFileLoader> imufile;
+    if (gnss_loader_type == "pwjppp") {
+        gnssfile = std::make_unique<PPPFileLoader>(gnsspath);
+    } else if (gnss_loader_type == "pos") {
+        gnssfile = std::make_unique<PosFileLoader>(gnsspath);
+    } else if (gnss_loader_type == "resppp") {
+        gnssfile = std::make_unique<ResPppFileLoader>(gnsspath);
+    } else if (gnss_loader_type == "pvt") {
+        gnssfile = std::make_unique<PvtFileLoader>(gnsspath);
+    } else if (gnss_loader_type == "ksxt") {
+        gnssfile = std::make_unique<KsxtFileLoader>(gnsspath);
+    } else if (gnss_loader_type == "pppsol") {
+        gnssfile = std::make_unique<PppsolFileLoader>(gnsspath);
+    } else {
+        gnssfile = std::make_unique<GnssFileLoader>(gnsspath);
+    }
+    if (imu_loader_type == "adis") {
+        imufile = std::make_unique<AdisFileLoader>(imupath);
+    } else if (imu_loader_type == "adisbin") {
+        imufile = std::make_unique<AdisBinaryLoader>(imupath);
+    } else if (imu_loader_type == "yis") {
+        imufile = std::make_unique<YisFileLoader>(imupath);
+    } else if (imu_loader_type == "asm330") {
+        imufile = std::make_unique<Asm330FileLoader>(imupath);
+    } else {
+        imufile = std::make_unique<ImuFileLoader>(imupath, imudatalen, imudatarate);
+    }
+    if (process(*giengine, *imufile, *gnssfile, starttime, endtime, gnss, imu_cur, navfile, imuerrfile, stdfile, week,
+                timestamp, navstate, cov, interval, percent, lastpercent)) {
+        return -1;
+    }
     navfile.close();
     imuerrfile.close();
     stdfile.close();
@@ -343,11 +321,12 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
     options.antlever = Eigen::Vector3d(vec1.data());
     GIEngineOpt opt1;
     try {
-        opt1.estimate_scale  = config["options"]["estimate_scale"].as<bool>();
-        opt1.enable_gnss_pos = config["options"]["enable_gnss_pos"].as<bool>();
-        opt1.enable_gnss_vel = config["options"]["enable_gnss_vel"].as<bool>();
-        opt1.enable_nhc      = config["options"]["enable_nhc"].as<bool>();
-        opt1.enable_zupt     = config["options"]["enable_zupt"].as<bool>();
+        opt1.estimate_scale       = config["options"]["estimate_scale"].as<bool>();
+        opt1.estimate_mount_angle = config["options"]["estimate_mount_angle"].as<bool>();
+        opt1.enable_gnss_pos      = config["options"]["enable_gnss_pos"].as<bool>();
+        opt1.enable_gnss_vel      = config["options"]["enable_gnss_vel"].as<bool>();
+        opt1.enable_nhc           = config["options"]["enable_nhc"].as<bool>();
+        opt1.enable_zupt          = config["options"]["enable_zupt"].as<bool>();
     } catch (YAML::Exception &exception) {
         std::cout << "Failed when loading configuration. Please check engine options!" << std::endl;
         return false;
@@ -390,8 +369,8 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
 
     // 保存导航结果
     // save navigation result
-    // if (fabs(time - (int) time) < 0.01) {
-    if (1) {
+    if (fabs(time - (int) time) < 0.01) {
+        // if (1) {
 #if 1
 
         result.clear();
@@ -406,6 +385,11 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
         result.push_back(navstate.euler[0] * R2D);
         result.push_back(navstate.euler[1] * R2D);
         result.push_back(navstate.euler[2] * R2D);
+#if 1
+        result.push_back(navstate.mountangle[0] * R2D);
+        result.push_back(navstate.mountangle[1] * R2D);
+        result.push_back(navstate.mountangle[2] * R2D);
+#endif
         result.push_back(navstate.status);
         navfile.dump(result);
 
@@ -447,7 +431,7 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
 void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile) {
 
     std::vector<double> result;
-
+    auto rank = cov.rows();
     result.clear();
     result.push_back(time);
     // 保存位置、速度、姿态标准差
@@ -467,13 +451,18 @@ void writeSTD(double time, Eigen::MatrixXd &cov, FileSaver &stdfile) {
     for (int i = 12; i < 15; i++) {
         result.push_back(sqrt(cov(i, i)) * 1e5);
     }
-    for (int i = 15; i < 21; i++) {
-        result.push_back(sqrt(cov(i, i)) * 1e6);
+    if (rank >= 21) {
+        for (int i = 15; i < 21; i++) {
+            result.push_back(sqrt(cov(i, i)) * 1e6);
+        }
+    } else if (rank >= 18) {
+        for (int i = 15; i < 18; i++) {
+            result.push_back(sqrt(cov(i, i)) * R2D);
+        }
     }
     stdfile.dump(result);
 }
-template <typename ImuLoader, typename GnssLoader>
-int process(GIEngine &giengine, ImuLoader &imufile, GnssLoader &gnssfile, double &starttime, double &endtime,
+int process(GIEngine &giengine, IImuFileLoader &imufile, IGnssFileLoader &gnssfile, double &starttime, double &endtime,
             GNSS &gnss, IMU &imu_cur, FileSaver &navfile, FileSaver &imuerrfile, FileSaver &stdfile, int &week,
             double &timestamp, NavState &navstate, Eigen::MatrixXd &cov, double &interval, int &percent,
             int &lastpercent) {

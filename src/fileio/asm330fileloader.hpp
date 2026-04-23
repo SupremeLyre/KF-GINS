@@ -2,6 +2,8 @@
 #include "common/angle.h"
 #include "common/types.h"
 #include "fileio/adisfileloader.hpp"
+#include "fileio/sensors_provider.hpp"
+#define ASM330RATE
 class Asm330FileLoader : public AdisFileLoader {
 public:
     Asm330FileLoader() = delete;
@@ -51,18 +53,30 @@ public:
             imu_.week = temper.week;
             imu_.time = temper.tow + 18.0; // leap seconds
             imu_.dt   = dt_;
+#ifndef ASM330RATE
             imu_.dtheta << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
             imu_.dvel << temper.acc[1], temper.acc[0], -temper.acc[2];
             imu_.accel << temper.acc[1] * sample_rate, temper.acc[0] * sample_rate, -temper.acc[2] * sample_rate;
             imu_.omega << temper.gyr[1] * D2R * sample_rate, temper.gyr[0] * D2R * sample_rate,
                 -temper.gyr[2] * D2R * sample_rate;
+#else
+            imu_.dtheta << temper.gyr[1] / sample_rate * D2R, temper.gyr[0] / sample_rate * D2R,
+                -temper.gyr[2] / sample_rate * D2R;
+            imu_.dvel << temper.acc[1] / sample_rate, temper.acc[0] / sample_rate, -temper.acc[2] / sample_rate;
+            imu_.accel << temper.acc[1], temper.acc[0], -temper.acc[2];
+            imu_.omega << temper.gyr[1] * D2R, temper.gyr[0] * D2R, -temper.gyr[2] * D2R;
+#endif
         }
         return imu_;
     }
 
 private:
     double dt_;
+#ifdef ASM330MEAN10HZ
     const double sample_rate = (208.0 / 21.0);
+#elif defined(ASM330RATE)
+    const double sample_rate = 104.0;
+#endif
     bool load_() {
         if (isEof())
             return false;

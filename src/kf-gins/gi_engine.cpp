@@ -242,6 +242,10 @@ GIEngine::GIEngine(GINSOptions &options) {
         Cov_.resize(RANK, RANK);
         Qc_.resize(NOISERANK, NOISERANK);
         dx_.resize(RANK, 1);
+    } else if (options.engineopt.estimate_mount_angle) {
+        Cov_.resize(RANKNHC, RANKNHC);
+        Qc_.resize(NOISERANKNHC, NOISERANKNHC);
+        dx_.resize(RANKNHC, 1);
     } else {
         Cov_.resize(RANKLITE, RANKLITE);
         Qc_.resize(NOISERANKLITE, NOISERANKLITE);
@@ -265,12 +269,14 @@ GIEngine::GIEngine(GINSOptions &options) {
             2 / imunoise.corr_time * imunoise.gyrscale_std.cwiseProduct(imunoise.gyrscale_std).asDiagonal();
         Qc_.block(SASTD_ID, SASTD_ID, 3, 3) =
             2 / imunoise.corr_time * imunoise.accscale_std.cwiseProduct(imunoise.accscale_std).asDiagonal();
+    } else if (engineopt_.estimate_mount_angle) {
+        Qc_.block(MOUNTSTD_ID, MOUNTSTD_ID, 3, 3) = 0.01 * imunoise.gyr_arw.cwiseProduct(imunoise.gyr_arw).asDiagonal();
     }
 
     // 设置系统状态(位置、速度、姿态和IMU误差)初值和初始协方差
     // set initial state (position, velocity, attitude and IMU error) and covariance
     initialize(options_.initstate, options_.initstate_std);
-    C_imu_body = Rotation::euler2matrix(options_.imu_misalign);
+    Cbv = Rotation::euler2matrix(options_.imu_misalign);
 }
 
 void GIEngine::initialize(const NavState &initstate, const NavState &initstate_std) {
@@ -287,6 +293,9 @@ void GIEngine::initialize(const NavState &initstate, const NavState &initstate_s
     if (engineopt_.estimate_scale) {
         Cov_.block(SG_ID, SG_ID, 3, 3) = imuerror_std.gyrscale.cwiseProduct(imuerror_std.gyrscale).asDiagonal();
         Cov_.block(SA_ID, SA_ID, 3, 3) = imuerror_std.accscale.cwiseProduct(imuerror_std.accscale).asDiagonal();
+    } else if (engineopt_.estimate_mount_angle) {
+        Cov_.block(MOUNT_ID, MOUNT_ID, 3, 3) =
+            initstate_std.euler.cwiseProduct(initstate_std.euler).asDiagonal(); // Use gyro bias std as proxy
     }
 }
 
@@ -393,10 +402,11 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     Qd.resizeLike(Cov_);
     if (engineopt_.estimate_scale) {
         G.resize(RANK, NOISERANK);
+    } else if (engineopt_.estimate_mount_angle) {
+        G.resize(RANKNHC, NOISERANKNHC);
     } else {
         G.resize(RANKLITE, NOISERANKLITE);
     }
-    Phi.setIdentity();
     F.setZero();
     Qd.setZero();
     G.setZero();
@@ -487,6 +497,8 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     if (engineopt_.estimate_scale) {
         F.block(SG_ID, SG_ID, 3, 3) = -1 / options_.imunoise.corr_time * Eigen::Matrix3d::Identity();
         F.block(SA_ID, SA_ID, 3, 3) = -1 / options_.imunoise.corr_time * Eigen::Matrix3d::Identity();
+    } else if (engineopt_.estimate_mount_angle) {
+        // F.block(MOUNT_ID, MOUNT_ID, 3, 3) = Eigen::Matrix3d::Identity();
     }
 
     // 系统噪声驱动矩阵
@@ -498,6 +510,8 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     if (engineopt_.estimate_scale) {
         G.block(SG_ID, SGSTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
         G.block(SA_ID, SASTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
+    } else if (engineopt_.estimate_mount_angle) {
+        G.block(MOUNT_ID, MOUNTSTD_ID, 3, 3) = Eigen::Matrix3d::Identity();
     }
 
     // 状态转移矩阵
@@ -525,7 +539,7 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // || (imucur_.time > 188723 && imucur_.time < 188771)
     // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
     if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
-        // if (engineopt_.enable_nhc) {
+    // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
         pvacur_.status |= 0b0010;
     }
@@ -564,7 +578,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
     if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber, 1);
+        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
     }
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -587,7 +601,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     Eigen::MatrixXd dz_vel;
     dz_vel = antenna_vel - gnssdata.vel;
     if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber, 1);
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber);
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
@@ -770,6 +784,15 @@ void GIEngine::stateFeedback() {
         imuerror_.gyrscale += vectemp;
         vectemp = dx_.block(SA_ID, 0, 3, 1);
         imuerror_.accscale += vectemp;
+    } else if (engineopt_.estimate_mount_angle) {
+        vectemp                     = dx_.block(MOUNT_ID, 0, 3, 1);
+        Eigen::Quaterniond qpv      = Rotation::rotvec2quaternion(vectemp);
+        Eigen::Vector3d delta_angle = Rotation::quaternion2euler(qpv);
+        delta_angle[0]              = 0;
+        // delta_angle[1]              = 0;
+        qpv                         = Rotation::euler2quaternion(delta_angle);
+        pvacur_.att.qbv             = qpv * pvacur_.att.qbv;
+        pvacur_.att.cbv             = Rotation::quaternion2matrix(pvacur_.att.qbv);
     }
 
     // 误差状态反馈到系统状态后,将误差状态清零
@@ -781,26 +804,31 @@ NavState GIEngine::getNavState() {
 
     NavState state;
 
-    state.pos      = pvacur_.pos;
-    state.vel      = pvacur_.vel;
-    state.euler    = pvacur_.att.euler;
-    state.imuerror = imuerror_;
-    state.status   = pvacur_.status;
+    state.pos        = pvacur_.pos;
+    state.vel        = pvacur_.vel;
+    state.euler      = pvacur_.att.euler;
+    state.imuerror   = imuerror_;
+    state.status     = pvacur_.status;
+    state.mountangle = Rotation::matrix2euler(pvacur_.att.cbv);
     return state;
 }
 int GIEngine::nhc(PVA pvacur_) {
     // 理论上载体系下只有前向速度，没有右向和下向速度。
-    Eigen::Matrix3d Cnb = pvacur_.att.cbn.transpose();
+    Eigen::Matrix3d Cnv = pvacur_.att.cbv * pvacur_.att.cbn.transpose();
     Eigen::Vector3d T1, T2, T3, vb;
-    vb         = Cnb * pvacur_.vel;
-    Matrix3d T = -Cnb * Rotation::skewSymmetric(pvacur_.vel);
-    Eigen::Vector3d C1, C2, C3;
-    C1 = Cnb.row(0);
-    C2 = Cnb.row(1);
-    C3 = Cnb.row(2);
+    vb            = Cnv * pvacur_.vel;
+    Matrix3d T    = -Cnv * Rotation::skewSymmetric(pvacur_.vel);
+    Matrix3d H_mu = Rotation::skewSymmetric(vb);
+    Eigen::Vector3d C1, C2, C3, H1, H2, H3;
+    C1 = Cnv.row(0);
+    C2 = Cnv.row(1);
+    C3 = Cnv.row(2);
     T1 = T.row(0);
     T2 = T.row(1);
     T3 = T.row(2);
+    H1 = H_mu.row(0);
+    H2 = H_mu.row(1);
+    H3 = H_mu.row(2);
     // Logging::printMatrix(vb);
     // 设计矩阵
     Eigen::MatrixXd H;
@@ -810,7 +838,7 @@ int GIEngine::nhc(PVA pvacur_) {
     Eigen::MatrixXd R;
     // std::cout << std::format("{:10.3f} {:8.3f} {:8.3f} {:8.3f} {:8.3f}\n", imucur_.time, vb[0], vb[1], vb[2],
     //                          imucur_.dtheta.norm() * R2D);
-    // Logging::printMatrix(Cnb);
+    // Logging::printMatrix(Cnv);
     // Logging::printMatrix(C1);
     // Logging::printMatrix(C2);
     // Logging::printMatrix(C3);
@@ -836,9 +864,13 @@ int GIEngine::nhc(PVA pvacur_) {
 #endif
             Vector3d Tx = i == 1 ? T2 : T3;
             Vector3d Cx = i == 1 ? C2 : C3;
+            Vector3d Hx = i == 1 ? H2 : H3;
 
             H.block(nv, V_ID, 1, 3)   = Cx.transpose();
             H.block(nv, PHI_ID, 1, 3) = Tx.transpose();
+            if (engineopt_.estimate_mount_angle) {
+                H.block(nv, MOUNT_ID, 1, 3) = Hx.transpose();
+            }
 
             dz(nv) = vb[i];
 
@@ -855,7 +887,7 @@ int GIEngine::nhc(PVA pvacur_) {
             if (i == 1) {
                 R(nv, nv) = pow(0.05, 2);
             } else {
-                R(nv, nv) = pow(0.1, 2);
+                R(nv, nv) = pow(2, 2);
             }
 #endif
             nv++;
@@ -1049,6 +1081,8 @@ void GIEngine::alignProcess() {
             pvacur_.att.euler[2] = yaw;
             pvacur_.att.qbn      = Rotation::euler2quaternion(pvacur_.att.euler);
             pvacur_.att.cbn      = Rotation::euler2matrix(pvacur_.att.euler);
+            pvacur_.att.qbv      = Rotation::euler2quaternion(Eigen::Vector3d(0.0, 0.0, 0));
+            pvacur_.att.cbv      = Rotation::euler2matrix(Eigen::Vector3d(0.0, 0.0, 0));
             pvacur_.pos          = gnssdata_.blh;
             pvacur_.vel          = gnssdata_.vel;
             pvapre_              = pvacur_;

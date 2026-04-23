@@ -1,7 +1,8 @@
 #pragma once
 #include "common/types.h"
 #include "fileio/fileloader.h"
-class AdisFileLoader : public FileLoader {
+#include "fileio/sensors_provider.hpp"
+class AdisFileLoader : public IImuFileLoader {
 public:
     AdisFileLoader() = delete;
     explicit AdisFileLoader(const string &filename, int columns = 13, int rate = 100);

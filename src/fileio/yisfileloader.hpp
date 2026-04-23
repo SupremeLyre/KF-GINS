@@ -4,7 +4,8 @@
 #include "common/time.hpp"
 #include "common/types.h"
 #include "fileio/fileloader.h"
-class YisFileLoader : public FileLoader {
+#include "fileio/sensors_provider.hpp"
+class YisFileLoader : public IImuFileLoader {
 public:
     YisFileLoader() = delete;
     explicit YisFileLoader(const string &filename, int columns = 22, int rate = 100) {

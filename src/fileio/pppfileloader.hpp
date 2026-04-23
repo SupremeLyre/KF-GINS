@@ -2,8 +2,9 @@
 #include "common/angle.h"
 #include "common/types.h"
 #include "fileio/fileloader.h"
+#include "fileio/sensors_provider.hpp"
 #include <vector>
-class PPPFileLoader : public FileLoader {
+class PPPFileLoader : public IGnssFileLoader {
 public:
     PPPFileLoader() = delete;
     explicit PPPFileLoader(const string &filename, int columns = 31) {

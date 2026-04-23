@@ -24,9 +24,10 @@
 #define IMUFILELOADER_H
 
 #include "common/types.h"
+#include "fileio/sensors_provider.hpp"
 #include "fileloader.h"
 
-class ImuFileLoader : public FileLoader {
+class ImuFileLoader : public IImuFileLoader {
 
 public:
     ImuFileLoader() = delete;

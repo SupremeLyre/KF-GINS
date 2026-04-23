@@ -3,13 +3,14 @@
 #include "common/earth.h"
 #include "common/types.h"
 #include "fileio/fileloader.h"
+#include "fileio/sensors_provider.hpp"
 #include <array>
 #include <cmath>
 #include <sstream>
 #include <string>
 #include <vector>
 
-class KsxtFileLoader : public FileLoader {
+class KsxtFileLoader : public IGnssFileLoader {
 public:
     KsxtFileLoader() = delete;
     explicit KsxtFileLoader(const string &filename, int columns = 19) {
@@ -36,7 +37,7 @@ public:
             gnss_.vel  = {temper.vel[0], temper.vel[1], -temper.vel[2]};
             gnss_.vstd = {fabs(temper.vstd[0]), fabs(temper.vstd[1]), fabs(temper.vstd[2])};
         }
-        if (temper.status == 3 && temper.nsat > 8) {
+        if (temper.status > 1 && temper.nsat > 8) {
             gnss_.isPosValid = true;
             gnss_.isVelValid = true;
         } else {

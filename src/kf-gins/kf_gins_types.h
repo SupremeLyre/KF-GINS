@@ -33,15 +33,17 @@
 typedef struct Attitude {
     Eigen::Quaterniond qbn;
     Eigen::Quaterniond qbe;
+    Eigen::Quaterniond qbv;
     Eigen::Matrix3d cbn;
     Eigen::Matrix3d cbe;
+    Eigen::Matrix3d cbv;
     Eigen::Vector3d euler;
 } Attitude;
 
 typedef struct PVA {
     Eigen::Vector3d pos;
     Eigen::Vector3d vel;
-    Eigen::Vector3d xyz; // ECEF坐标系下的位置
+    Eigen::Vector3d xyz;      // ECEF坐标系下的位置
     Eigen::Vector3d vel_ecef; // ECEF坐标系下的速度
     Attitude att;
     uint8_t status; // 解算状态：四位二进制，低位至高位依次是：3-INS 2-ZUPT 1-NHC 0-GNSS
@@ -57,10 +59,10 @@ typedef struct ImuError {
 typedef struct NavState {
     Eigen::Vector3d pos;
     Eigen::Vector3d vel;
-    Eigen::Vector3d xyz; // ECEF坐标系下的位置
+    Eigen::Vector3d xyz;      // ECEF坐标系下的位置
     Eigen::Vector3d vel_ecef; // ECEF坐标系下的速度
     Eigen::Vector3d euler;
-
+    Eigen::Vector3d mountangle;
     ImuError imuerror;
     uint8_t status;
 } NavState;
@@ -83,6 +85,7 @@ struct ZUPTOptions {
 };
 struct GIEngineOptions {
     bool estimate_scale;
+    bool estimate_mount_angle;
     bool enable_gnss_pos;
     bool enable_gnss_vel;
     bool enable_nhc;

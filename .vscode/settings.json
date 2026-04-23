@@ -3,7 +3,7 @@
         "args": [
             // "dataset/20241101/white_box.yaml",
             // "dataset/20250103/white_box.yaml",
-            "dataset/20250318/white_box.yaml",
+            // "dataset/20250318/white_box.yaml",
             // "dataset/20250915/white_box.yaml",
             // "dataset/20251011/white_box1.yaml",
             // "dataset/20251011/white_box2.yaml",
@@ -18,6 +18,7 @@
             // "dataset/20260109/red_box.yaml",
             // "dataset/20260109/config.yaml",
             // "dataset/20260116/red_box.yaml",
+            "dataset/20260402/red_box.yaml",
         ],
         "cwd": "${workspaceFolder}"
     },

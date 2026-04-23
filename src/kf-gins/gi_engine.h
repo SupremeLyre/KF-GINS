@@ -56,8 +56,8 @@ public:
      * */
     void addImuData(const IMU &imu, bool compensate = false) {
         IMU imu_    = imu;
-        imu_.dtheta = C_imu_body * imu_.dtheta;
-        imu_.dvel   = C_imu_body * imu_.dvel;
+        imu_.dtheta = Cbv * imu_.dtheta;
+        imu_.dvel   = Cbv * imu_.dvel;
         imupre_     = imucur_;
         imucur_     = imu_;
         if (compensate) {
@@ -241,7 +241,7 @@ public:
      *        update state using gnss position
      * @param [in,out] gnssdata
      * */
-    void gnssUpdate(GNSS &gnssdata);
+    virtual void gnssUpdate(GNSS &gnssdata);
 
     /**
      * @brief 反馈误差状态到当前状态
@@ -345,31 +345,39 @@ protected:
     PVA pvacur_;
     PVA pvapre_;
     ImuError imuerror_;
-    Eigen::Matrix3d C_imu_body;
+    Eigen::Matrix3d Cbv; // IMU安装误差角
     // Kalman滤波相关
     // ekf variables
     Eigen::MatrixXd Cov_;
     Eigen::MatrixXd Qc_;
     Eigen::MatrixXd dx_;
-    const int RANK      = 21;
-    const int RANKLITE    = 15; // 15维，不估计IMU比例因子误差
-    const int RANKNHC = 17; // 17维，估计IMU安装角的俯仰角和航向角
-    const int NOISERANK = 18;
+    const int RANK          = 21;
+    const int RANKLITE      = 15; // 15维，不估计IMU比例因子误差
+    const int RANKNHC       = 18; // 18维，估计IMU安装角的俯仰角和航向角
+    const int NOISERANK     = 18;
     const int NOISERANKLITE = 12;
+    const int NOISERANKNHC  = 15;
     // 状态ID和噪声ID
     // state ID and noise ID
     enum StateID {
-        P_ID   = 0,
-        V_ID   = 3,
-        PHI_ID = 6,
-        BG_ID  = 9,
-        BA_ID  = 12,
-        SG_ID  = 15,
-        SA_ID  = 18,
-        PITCH_ID = 15,
-        HEADING_ID = 16,
+        P_ID       = 0,
+        V_ID       = 3,
+        PHI_ID     = 6,
+        BG_ID      = 9,
+        BA_ID      = 12,
+        SG_ID      = 15,
+        SA_ID      = 18,
+        MOUNT_ID = 15,
     };
-    enum NoiseID { VRW_ID = 0, ARW_ID = 3, BGSTD_ID = 6, BASTD_ID = 9, SGSTD_ID = 12, SASTD_ID = 15 };
+    enum NoiseID {
+        VRW_ID        = 0,
+        ARW_ID        = 3,
+        BGSTD_ID      = 6,
+        BASTD_ID      = 9,
+        SGSTD_ID      = 12,
+        SASTD_ID      = 15,
+        MOUNTSTD_ID = 12,
+    };
 };
 
 #endif // GI_ENGINE_H

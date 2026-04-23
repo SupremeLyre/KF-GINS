@@ -25,9 +25,10 @@
 
 #include "common/angle.h"
 #include "common/types.h"
+#include "fileio/sensors_provider.hpp"
 #include "fileloader.h"
 
-class GnssFileLoader : public FileLoader {
+class GnssFileLoader : public IGnssFileLoader {
 
 public:
     GnssFileLoader() = delete;

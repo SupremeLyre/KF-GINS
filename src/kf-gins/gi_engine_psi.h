@@ -23,11 +23,11 @@
  */
 #pragma once
 #include "gi_engine.h"
-#include "insmech.h"
 class GIEngine_PSI : public GIEngine {
     using GIEngine::GIEngine;
 
 private:
     void insPropagation(IMU &imupre, IMU &imucur) override;
     void stateFeedback() override;
+    void gnssUpdate(GNSS &gnssdata) override;
 };

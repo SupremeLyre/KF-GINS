@@ -3,9 +3,10 @@
 #include "common/earth.h"
 #include "common/types.h"
 #include "fileio/fileloader.h"
+#include "fileio/sensors_provider.hpp"
 #include <array>
 #include <string>
-class PvtFileLoader : public FileLoader {
+class PvtFileLoader : public IGnssFileLoader {
 public:
     PvtFileLoader() = delete;
     explicit PvtFileLoader(const string &filename, int columns = 19) {

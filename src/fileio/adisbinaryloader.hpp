@@ -3,11 +3,12 @@
 #include "common/crc32.h"
 #include "common/types.h"
 #include "fileio/fileloader.h"
+#include "fileio/sensors_provider.hpp"
 #include <array>
 #include <cstdint>
 #include <fstream>
 #include <string>
-class AdisBinaryLoader : public FileLoader {
+class AdisBinaryLoader : public IImuFileLoader {
 public:
     AdisBinaryLoader() = delete;
     explicit AdisBinaryLoader(const string &filename, int columns = 13, int rate = 100) {

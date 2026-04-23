@@ -1,9 +1,10 @@
 #pragma once
 #include "common/angle.h"
 #include "common/types.h"
+#include "fileio/sensors_provider.hpp"
 #include "fileloader.h"
 
-class ResPppFileLoader : public FileLoader {
+class ResPppFileLoader : public IGnssFileLoader {
 
 public:
     ResPppFileLoader() = delete;

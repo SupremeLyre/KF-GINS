@@ -1,7 +1,8 @@
 #pragma once
 #include "common/types.h"
 #include "fileio/fileloader.h"
-class PosFileLoader : public FileLoader {
+#include "fileio/sensors_provider.hpp"
+class PosFileLoader : public IGnssFileLoader {
 public:
     PosFileLoader() = delete;
     explicit PosFileLoader(const string &filename, int columns = 34) {

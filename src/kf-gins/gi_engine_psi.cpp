@@ -1,6 +1,7 @@
 #include "gi_engine_psi.h"
 #include "Eigen/Geometry"
 #include "common/earth.h"
+#include "kf-gins/insmech.h"
 void GIEngine_PSI::insPropagation(IMU &imupre, IMU &imucur) {
 
     // 对当前IMU数据(imucur)补偿误差, 上一IMU数据(imupre)已经补偿过了
@@ -180,4 +181,73 @@ void GIEngine_PSI::stateFeedback() {
     // 误差状态反馈到系统状态后,将误差状态清零
     // set 'dx' to zero after feedback error state to system state
     dx_.setZero();
+}
+void GIEngine_PSI::gnssUpdate(GNSS &gnssdata) {
+
+    // IMU位置转到GNSS天线相位中心位置
+    // convert IMU position to GNSS antenna phase center position
+    Eigen::Vector3d antenna_pos, antenna_vel;
+    Eigen::Matrix3d Dr, Dr_inv;
+    Dr_inv               = Earth::DRi(pvacur_.pos);
+    Dr                   = Earth::DR(pvacur_.pos);
+    antenna_pos          = pvacur_.pos + Dr_inv * pvacur_.att.cbn * options_.antlever;
+    Eigen::Vector2d rmrn = Earth::meridianPrimeVerticalRadius(pvacur_.pos[0]);
+    Eigen::Vector3d winn = Earth::wien(pvacur_.pos[0]) + Earth::wenn(rmrn, pvacur_.pos, pvacur_.vel);
+    antenna_vel          = pvacur_.vel - Rotation::skewSymmetric(winn) * (pvacur_.att.cbn * options_.antlever) -
+                  pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * imucur_.omega);
+    // GNSS位置测量新息
+    // compute GNSS position innovation
+    Eigen::MatrixXd dz;
+    dz = Dr * (antenna_pos - gnssdata.blh);
+
+    // 构造GNSS位置观测矩阵
+    // construct GNSS position measurement matrix
+    Eigen::MatrixXd H_gnsspos;
+    H_gnsspos.resize(3, Cov_.rows());
+    H_gnsspos.setZero();
+    H_gnsspos.block(0, P_ID, 3, 3)   = Eigen::Matrix3d::Identity();
+    H_gnsspos.block(0, PHI_ID, 3, 3) = Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
+
+    // 位置观测噪声阵
+    // construct measurement noise matrix
+    Eigen::MatrixXd R_gnsspos;
+    R_gnsspos = gnssdata.std.cwiseProduct(gnssdata.std).asDiagonal();
+
+    // EKF更新协方差和误差状态
+    // do EKF update to update covariance and error state
+    if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
+        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber, 1);
+    }
+    // GNSS速度观测矩阵
+    Eigen::MatrixXd H_gnssvel;
+    H_gnssvel.resize(3, Cov_.rows());
+    H_gnssvel.setZero();
+    H_gnssvel.block(0, V_ID, 3, 3) = Eigen::Matrix3d::Identity();
+    H_gnssvel.block(0, PHI_ID, 3, 3) =
+        -(Rotation::skewSymmetric(winn) * Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
+          Rotation::skewSymmetric(pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * imucur_.omega)));
+    H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
+    if (engineopt_.estimate_scale) {
+        H_gnssvel.block(0, SG_ID, 3, 3) =
+            -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * imucur_.omega.asDiagonal();
+    }
+    // GNSS速度观测噪声矩阵
+    Eigen::MatrixXd R_gnssvel;
+    R_gnssvel = gnssdata.vstd.cwiseProduct(gnssdata.vstd).asDiagonal();
+    // GNSS速度量测新息
+    Eigen::MatrixXd dz_vel;
+    Eigen::Matrix3d Cec      = Earth::cne(pvacur_.pos).transpose();
+    Eigen::Matrix3d Cne      = Earth::cne(gnssdata.blh);
+    Eigen::Matrix3d Cnc      = Cec * Cne;
+    Eigen::Vector3d gnss_vel = Cnc * gnssdata.vel;
+    dz_vel                   = antenna_vel - gnss_vel;
+    if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber, 1);
+    }
+    // GNSS更新之后设置为不可用
+    // Set GNSS invalid after update
+    gnssdata.isvalid = false;
+    if (gnssdata.isPosValid || gnssdata.isVelValid) {
+        pvacur_.status |= 0b0001;
+    }
 }
