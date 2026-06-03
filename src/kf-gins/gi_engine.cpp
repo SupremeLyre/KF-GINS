@@ -594,10 +594,10 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
         -(Rotation::skewSymmetric(Earth::wien(pvacur_.pos[0])) *
               Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
           Rotation::skewSymmetric(pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * imucur_.omega)));
-    H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
+    H_gnssvel.block(0, BG_ID, 3, 3) = -pvacur_.att.cbn * Rotation::skewSymmetric(options_.antlever);
     if (engineopt_.estimate_scale) {
         H_gnssvel.block(0, SG_ID, 3, 3) =
-            -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * imucur_.omega.asDiagonal();
+            -pvacur_.att.cbn * Rotation::skewSymmetric(options_.antlever) * imucur_.omega.asDiagonal();
     }
     // GNSS速度观测噪声矩阵
     Eigen::MatrixXd R_gnssvel;

@@ -216,7 +216,7 @@ void GIEngine_PSI::gnssUpdate(GNSS &gnssdata) {
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
     if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber, 1);
+        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::EKF, 0);
     }
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -226,10 +226,10 @@ void GIEngine_PSI::gnssUpdate(GNSS &gnssdata) {
     H_gnssvel.block(0, PHI_ID, 3, 3) =
         -(Rotation::skewSymmetric(winn) * Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) +
           Rotation::skewSymmetric(pvacur_.att.cbn * (Rotation::skewSymmetric(options_.antlever) * imucur_.omega)));
-    H_gnssvel.block(0, BG_ID, 3, 3) = -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever);
+    H_gnssvel.block(0, BG_ID, 3, 3) = -pvacur_.att.cbn * Rotation::skewSymmetric(options_.antlever);
     if (engineopt_.estimate_scale) {
         H_gnssvel.block(0, SG_ID, 3, 3) =
-            -Rotation::skewSymmetric(pvacur_.att.cbn * options_.antlever) * imucur_.omega.asDiagonal();
+            -pvacur_.att.cbn * Rotation::skewSymmetric(options_.antlever) * imucur_.omega.asDiagonal();
     }
     // GNSS速度观测噪声矩阵
     Eigen::MatrixXd R_gnssvel;
@@ -242,7 +242,7 @@ void GIEngine_PSI::gnssUpdate(GNSS &gnssdata) {
     Eigen::Vector3d gnss_vel = Cnc * gnssdata.vel;
     dz_vel                   = antenna_vel - gnss_vel;
     if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber, 1);
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::EKF, 0);
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
