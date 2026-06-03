@@ -103,13 +103,7 @@ int main(int argc, char *argv[]) {
     // imudata configuration， data processing interval
     int imudatalen, imudatarate;
     double starttime{}, endtime{-1};
-    int newtype         = 0;
     modelType modeltype = PHI;
-    try {
-        newtype = config["newtype"].as<int>();
-    } catch (YAML::Exception &e) {
-        newtype = 0;
-    }
     try {
         modeltype = (modelType) config["modeltype"].as<int>();
     } catch (YAML::Exception &e) {

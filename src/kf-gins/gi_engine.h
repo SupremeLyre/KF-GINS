@@ -116,10 +116,14 @@ public:
         midimu.dtheta = imu2.dtheta * lamda;
         midimu.dvel   = imu2.dvel * lamda;
         midimu.dt     = timestamp - imu1.time;
+        midimu.omega = midimu.dtheta / midimu.dt;
+        midimu.accel = midimu.dvel / midimu.dt;
 
         imu2.dtheta = imu2.dtheta - midimu.dtheta;
         imu2.dvel   = imu2.dvel - midimu.dvel;
         imu2.dt     = imu2.dt - midimu.dt;
+        imu2.omega = imu2.dtheta / imu2.dt;
+        imu2.accel = imu2.dvel / imu2.dt;
     }
 
     /**

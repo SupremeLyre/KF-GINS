@@ -63,7 +63,7 @@ void GIEngine_PSI::insPropagation(IMU &imupre, IMU &imucur) {
     temp(1, 1)                = -gravity / (rmrn[1] + pvapre_.pos[2]);
     temp(2, 2)                = 2 * gravity / (sqrt_RmRn + pvapre_.pos[2]);
     F.block(V_ID, P_ID, 3, 3) = temp;
-    temp                      = Rotation::skewSymmetric(-2 * (wie_n + wen_n));
+    temp                      = Rotation::skewSymmetric(-(2 * wie_n + wen_n));
     F.block(V_ID, V_ID, 3, 3) = temp;
     // F_v_phi=fc× n系的比力积分项变化率的反对称阵
     F.block(V_ID, PHI_ID, 3, 3) = Rotation::skewSymmetric(pvapre_.att.cbn * accel);

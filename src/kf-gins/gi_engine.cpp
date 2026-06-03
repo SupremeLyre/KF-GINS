@@ -371,6 +371,9 @@ void GIEngine::imuCompensate(IMU &imu) {
     imu.dtheta -= imuerror_.gyrbias * imu.dt;
     imu.dvel -= imuerror_.accbias * imu.dt;
 
+    imu.omega -= imuerror_.gyrbias;
+    imu.accel -= imuerror_.accbias;
+
     // 补偿IMU比例因子
     // compensate the imu scale
     if (engineopt_.estimate_scale) {
@@ -379,6 +382,8 @@ void GIEngine::imuCompensate(IMU &imu) {
         accscale   = Eigen::Vector3d::Ones() + imuerror_.accscale;
         imu.dtheta = imu.dtheta.cwiseProduct(gyrscale.cwiseInverse());
         imu.dvel   = imu.dvel.cwiseProduct(accscale.cwiseInverse());
+        imu.omega  = imu.omega.cwiseProduct(gyrscale.cwiseInverse());
+        imu.accel  = imu.accel.cwiseProduct(accscale.cwiseInverse());
     }
 }
 
@@ -539,7 +544,7 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // || (imucur_.time > 188723 && imucur_.time < 188771)
     // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
     if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
-    // if (engineopt_.enable_nhc) {
+        // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
         pvacur_.status |= 0b0010;
     }
@@ -790,9 +795,9 @@ void GIEngine::stateFeedback() {
         Eigen::Vector3d delta_angle = Rotation::quaternion2euler(qpv);
         delta_angle[0]              = 0;
         // delta_angle[1]              = 0;
-        qpv                         = Rotation::euler2quaternion(delta_angle);
-        pvacur_.att.qbv             = qpv * pvacur_.att.qbv;
-        pvacur_.att.cbv             = Rotation::quaternion2matrix(pvacur_.att.qbv);
+        qpv             = Rotation::euler2quaternion(delta_angle);
+        pvacur_.att.qbv = qpv * pvacur_.att.qbv;
+        pvacur_.att.cbv = Rotation::quaternion2matrix(pvacur_.att.qbv);
     }
 
     // 误差状态反馈到系统状态后,将误差状态清零
