@@ -116,14 +116,14 @@ public:
         midimu.dtheta = imu2.dtheta * lamda;
         midimu.dvel   = imu2.dvel * lamda;
         midimu.dt     = timestamp - imu1.time;
-        midimu.omega = midimu.dtheta / midimu.dt;
-        midimu.accel = midimu.dvel / midimu.dt;
+        midimu.omega  = midimu.dtheta / midimu.dt;
+        midimu.accel  = midimu.dvel / midimu.dt;
 
         imu2.dtheta = imu2.dtheta - midimu.dtheta;
         imu2.dvel   = imu2.dvel - midimu.dvel;
         imu2.dt     = imu2.dt - midimu.dt;
-        imu2.omega = imu2.dtheta / imu2.dt;
-        imu2.accel = imu2.dvel / imu2.dt;
+        imu2.omega  = imu2.dtheta / imu2.dt;
+        imu2.accel  = imu2.dvel / imu2.dt;
     }
 
     /**
@@ -188,7 +188,7 @@ public:
     }
     void checkCov() {
 
-        for (int i = 0; i < RANK; i++) {
+        for (int i = 0; i < Cov_.rows(); i++) {
 #if 0
             if (i >= 0 && i <= 2) {
                 if (Cov_(i, i) < 0.01) {
@@ -364,22 +364,22 @@ protected:
     // 状态ID和噪声ID
     // state ID and noise ID
     enum StateID {
-        P_ID       = 0,
-        V_ID       = 3,
-        PHI_ID     = 6,
-        BG_ID      = 9,
-        BA_ID      = 12,
-        SG_ID      = 15,
-        SA_ID      = 18,
+        P_ID     = 0,
+        V_ID     = 3,
+        PHI_ID   = 6,
+        BG_ID    = 9,
+        BA_ID    = 12,
+        SG_ID    = 15,
+        SA_ID    = 18,
         MOUNT_ID = 15,
     };
     enum NoiseID {
-        VRW_ID        = 0,
-        ARW_ID        = 3,
-        BGSTD_ID      = 6,
-        BASTD_ID      = 9,
-        SGSTD_ID      = 12,
-        SASTD_ID      = 15,
+        VRW_ID      = 0,
+        ARW_ID      = 3,
+        BGSTD_ID    = 6,
+        BASTD_ID    = 9,
+        SGSTD_ID    = 12,
+        SASTD_ID    = 15,
         MOUNTSTD_ID = 12,
     };
 };
