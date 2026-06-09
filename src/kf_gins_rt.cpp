@@ -549,6 +549,33 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         std::cout << "Failed when loading configuration. Please check zupt options!" << std::endl;
         return false;
     }
+    if (config["kf"]) {
+        try {
+            auto load_kf_type = [&](const char *key, int &target) -> bool {
+                if (!config["kf"][key]) {
+                    return true;
+                }
+                target = config["kf"][key].as<int>();
+                if (target < -1 || target > 3) {
+                    std::cout << "Failed when loading configuration. Please check kf " << key << "!" << std::endl;
+                    return false;
+                }
+                return true;
+            };
+            if (!load_kf_type("type", opt1.kf_type) ||
+                !load_kf_type("gnss_pos_type", opt1.kf_gnss_pos_type) ||
+                !load_kf_type("gnss_vel_type", opt1.kf_gnss_vel_type) ||
+                !load_kf_type("zupt_type", opt1.kf_zupt_type) || !load_kf_type("nhc_type", opt1.kf_nhc_type)) {
+                return false;
+            }
+            if (config["kf"]["adaptive"]) {
+                opt1.kf_enable_adaptive = config["kf"]["adaptive"].as<bool>();
+            }
+        } catch (YAML::Exception &exception) {
+            std::cout << "Failed when loading configuration. Please check kf options!" << std::endl;
+            return false;
+        }
+    }
     try {
         auto vec = config["imu_misalign"].as<std::vector<double>>();
 

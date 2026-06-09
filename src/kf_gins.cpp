@@ -27,6 +27,7 @@
 #include "fileio/filesaver.h"
 #include "fileio/gnssfileloader.h"
 #include "fileio/imufileloader.h"
+#include "fileio/ysasm330fileloader.hpp"
 #include <Eigen/Dense>
 #include <absl/time/clock.h>
 #include <format>
@@ -188,6 +189,8 @@ int main(int argc, char *argv[]) {
         imufile = std::make_unique<YisFileLoader>(imupath);
     } else if (imu_loader_type == "asm330") {
         imufile = std::make_unique<Asm330FileLoader>(imupath);
+    } else if (imu_loader_type == "ysasm330") {
+        imufile = std::make_unique<YsAsm330FileLoader>(imupath, 9, imudatarate);
     } else {
         imufile = std::make_unique<ImuFileLoader>(imupath, imudatalen, imudatarate);
     }
@@ -333,6 +336,47 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
     } catch (YAML::Exception &exception) {
         std::cout << "Failed when loading configuration. Please check zupt options!" << std::endl;
         return false;
+    }
+    if (config["nhc"]) {
+        try {
+            auto vec = config["nhc"]["cov"].as<std::vector<double>>();
+            if (vec.size() != 2 || vec[0] <= 0.0 || vec[1] <= 0.0) {
+                std::cout << "Failed when loading configuration. Please check nhc covariance!" << std::endl;
+                return false;
+            }
+            opt1.nhcopt.lateral_cov  = vec[0];
+            opt1.nhcopt.vertical_cov = vec[1];
+        } catch (YAML::Exception &exception) {
+            std::cout << "Failed when loading configuration. Please check nhc options!" << std::endl;
+            return false;
+        }
+    }
+    if (config["kf"]) {
+        try {
+            auto load_kf_type = [&](const char *key, int &target) -> bool {
+                if (!config["kf"][key]) {
+                    return true;
+                }
+                target = config["kf"][key].as<int>();
+                if (target < -1 || target > 3) {
+                    std::cout << "Failed when loading configuration. Please check kf " << key << "!" << std::endl;
+                    return false;
+                }
+                return true;
+            };
+            if (!load_kf_type("type", opt1.kf_type) ||
+                !load_kf_type("gnss_pos_type", opt1.kf_gnss_pos_type) ||
+                !load_kf_type("gnss_vel_type", opt1.kf_gnss_vel_type) ||
+                !load_kf_type("zupt_type", opt1.kf_zupt_type) || !load_kf_type("nhc_type", opt1.kf_nhc_type)) {
+                return false;
+            }
+            if (config["kf"]["adaptive"]) {
+                opt1.kf_enable_adaptive = config["kf"]["adaptive"].as<bool>();
+            }
+        } catch (YAML::Exception &exception) {
+            std::cout << "Failed when loading configuration. Please check kf options!" << std::endl;
+            return false;
+        }
     }
     try {
         auto vec = config["imu_misalign"].as<std::vector<double>>();

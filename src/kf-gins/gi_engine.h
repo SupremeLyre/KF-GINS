@@ -81,9 +81,7 @@ public:
     void addGnssData(const GNSS &gnss) {
 
         gnssdata_ = gnss;
-        // 暂不进行数据有效性检查，GNSS数据默认有效
-        // do not check the validity of gnssdata, the gnssdata is valid by default
-        gnssdata_.isvalid = true;
+        gnssdata_.isvalid = gnssdata_.isPosValid || gnssdata_.isVelValid;
     }
 
     /**
@@ -315,6 +313,8 @@ protected:
      * */
     void EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixXd &R, KFFilterType filter_type,
                    bool enable_adaptive = false);
+    KFFilterType configuredFilterType(int configured_type, KFFilterType default_type) const;
+    KFFilterType configuredFilterType(KFFilterType default_type) const;
 
     /**
      * @brief 检查协方差对角线元素是否都为正

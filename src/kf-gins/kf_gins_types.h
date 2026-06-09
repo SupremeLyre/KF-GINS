@@ -83,6 +83,10 @@ struct ZUPTOptions {
     double wib_threshold;
     double fb_threshold;
 };
+struct NHCOptions {
+    double lateral_cov  = 0.0025;
+    double vertical_cov = 4.0;
+};
 struct GIEngineOptions {
     bool estimate_scale;
     bool estimate_mount_angle;
@@ -90,7 +94,14 @@ struct GIEngineOptions {
     bool enable_gnss_vel;
     bool enable_nhc;
     bool enable_zupt;
+    int kf_type             = -1; // -1: use call-site default, 0: EKF, 1: Huber, 2: IGG3, 3: Denish
+    int kf_gnss_pos_type    = -1;
+    int kf_gnss_vel_type    = -1;
+    int kf_zupt_type        = -1;
+    int kf_nhc_type         = -1;
+    bool kf_enable_adaptive = false;
     ZUPTOptions zuptopt;
+    NHCOptions nhcopt;
 };
 using ZuptOptions = ZUPTOptions;
 using GIEngineOpt = GIEngineOptions;

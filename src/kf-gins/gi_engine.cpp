@@ -284,7 +284,11 @@ void GIEngine::initialize(const NavState &initstate, const NavState &initstate_s
     pvacur_.status = 0;
     // 初始化协方差
     // initialize covariance
-    ImuError imuerror_std            = initstate_std.imuerror;
+    ImuError imuerror_std = initstate_std.imuerror;
+    imuerror_.accbias.setZero();
+    imuerror_.gyrbias.setZero();
+    imuerror_.accscale.setZero();
+    imuerror_.gyrscale.setZero();
     Cov_.block(P_ID, P_ID, 3, 3)     = initstate_std.pos.cwiseProduct(initstate_std.pos).asDiagonal();
     Cov_.block(V_ID, V_ID, 3, 3)     = initstate_std.vel.cwiseProduct(initstate_std.vel).asDiagonal();
     Cov_.block(PHI_ID, PHI_ID, 3, 3) = initstate_std.euler.cwiseProduct(initstate_std.euler).asDiagonal();
@@ -583,7 +587,9 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
     if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::Huber);
+        EKFUpdate(dz, H_gnsspos, R_gnsspos,
+                  configuredFilterType(engineopt_.kf_gnss_pos_type, KFFilterType::Huber),
+                  engineopt_.kf_enable_adaptive);
     }
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -606,7 +612,9 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     Eigen::MatrixXd dz_vel;
     dz_vel = antenna_vel - gnssdata.vel;
     if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::Huber);
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel,
+                  configuredFilterType(engineopt_.kf_gnss_vel_type, KFFilterType::Huber),
+                  engineopt_.kf_enable_adaptive);
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
@@ -751,6 +759,26 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
     Cov_ = I * Cov_;
 }
 
+GIEngine::KFFilterType GIEngine::configuredFilterType(int configured_type, KFFilterType default_type) const {
+    int type = configured_type >= 0 ? configured_type : engineopt_.kf_type;
+    switch (type) {
+        case 0:
+            return KFFilterType::EKF;
+        case 1:
+            return KFFilterType::Huber;
+        case 2:
+            return KFFilterType::IGG3;
+        case 3:
+            return KFFilterType::Denish;
+        default:
+            return default_type;
+    }
+}
+
+GIEngine::KFFilterType GIEngine::configuredFilterType(KFFilterType default_type) const {
+    return configuredFilterType(engineopt_.kf_type, default_type);
+}
+
 void GIEngine::stateFeedback() {
 
     Eigen::Vector3d vectemp;
@@ -889,11 +917,7 @@ int GIEngine::nhc(PVA pvacur_) {
                 R(nv, nv) = pow(nhc_noise[1], 2);
             }
 #else
-            if (i == 1) {
-                R(nv, nv) = pow(0.05, 2);
-            } else {
-                R(nv, nv) = pow(2, 2);
-            }
+            R(nv, nv) = i == 1 ? pow(engineopt_.nhcopt.lateral_cov, 2) : pow(engineopt_.nhcopt.vertical_cov, 2);
 #endif
             nv++;
         }
@@ -912,7 +936,8 @@ int GIEngine::nhc(PVA pvacur_) {
     //     R(1, 1) = pow(2, 2);
     // #endif
     if (nv > 1) {
-        EKFUpdate(dz, H, R, KFFilterType::EKF);
+        EKFUpdate(dz, H, R, configuredFilterType(engineopt_.kf_nhc_type, KFFilterType::EKF),
+                  engineopt_.kf_enable_adaptive);
         // stateNHCFeedback();
         stateFeedback();
         // std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
@@ -943,7 +968,8 @@ int GIEngine::zupt(PVA pvacur_) {
     R(2, 2) = pow(0.01, 2);
 #endif
 
-    EKFUpdate(dz, H, R, KFFilterType::EKF);
+    EKFUpdate(dz, H, R, configuredFilterType(engineopt_.kf_zupt_type, KFFilterType::EKF),
+              engineopt_.kf_enable_adaptive);
     // stateZUPTFeedback();
     stateFeedback();
     // pvapre_.vel.setZero();

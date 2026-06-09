@@ -216,7 +216,9 @@ void GIEngine_PSI::gnssUpdate(GNSS &gnssdata) {
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
     if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos, KFFilterType::EKF, 0);
+        EKFUpdate(dz, H_gnsspos, R_gnsspos,
+                  configuredFilterType(engineopt_.kf_gnss_pos_type, KFFilterType::EKF),
+                  engineopt_.kf_enable_adaptive);
     }
     // GNSS速度观测矩阵
     Eigen::MatrixXd H_gnssvel;
@@ -242,7 +244,9 @@ void GIEngine_PSI::gnssUpdate(GNSS &gnssdata) {
     Eigen::Vector3d gnss_vel = Cnc * gnssdata.vel;
     dz_vel                   = antenna_vel - gnss_vel;
     if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, KFFilterType::EKF, 0);
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel,
+                  configuredFilterType(engineopt_.kf_gnss_vel_type, KFFilterType::EKF),
+                  engineopt_.kf_enable_adaptive);
     }
     // GNSS更新之后设置为不可用
     // Set GNSS invalid after update
