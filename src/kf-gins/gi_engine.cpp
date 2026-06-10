@@ -29,6 +29,7 @@
 #include "insmech.h"
 #include "kf-gins/kf_gins_types.h"
 #include <Eigen/Eigen>
+#include <cmath>
 #include <format>
 #include <glog/logging.h>
 
@@ -227,6 +228,26 @@ static Tree &getInstance() {
 }
 
 } // namespace DecisionTreeNHC
+
+namespace {
+constexpr double GPS_WEEK_SECONDS = 604800.0;
+
+double gnssTimeDiff(double week, double time, double ref_week, double ref_time) {
+    return (week - ref_week) * GPS_WEEK_SECONDS + (time - ref_time);
+}
+
+bool isSameGnssEpoch(double week1, double time1, double week2, double time2) {
+    return std::fabs(week1 - week2) < 0.5 && std::fabs(time1 - time2) < 1e-9;
+}
+
+double normalizeHeading(double yaw) {
+    yaw = std::fmod(yaw, 2.0 * M_PI);
+    if (yaw < 0.0) {
+        yaw += 2.0 * M_PI;
+    }
+    return yaw;
+}
+} // namespace
 
 GIEngine::GIEngine(GINSOptions &options) {
 
@@ -1071,6 +1092,127 @@ bool GIEngine::isTurning() {
     }
     return isTurn;
 }
+
+void GIEngine::resetChenHeadingAlignment() {
+    chen_aligning_         = true;
+    chen_have_start_gnss_  = false;
+    chen_have_last_gnss_   = false;
+    chen_have_prev_dtheta_ = false;
+    chen_start_week_       = 0.0;
+    chen_start_time_       = 0.0;
+    chen_last_gnss_week_   = 0.0;
+    chen_last_gnss_time_   = 0.0;
+    chen_start_blh_.setZero();
+    chen_last_blh_.setZero();
+    chen_dr_delta_.setZero();
+    chen_prev_dtheta_.setZero();
+
+    Eigen::Vector3d euler = pvacur_.att.euler;
+    euler[2]              = 0.0;
+    chen_qbn_             = Rotation::euler2quaternion(euler);
+    chen_cbn_             = Rotation::quaternion2matrix(chen_qbn_);
+}
+
+void GIEngine::updateChenHeadingAttitude(bool imu_already_compensated) {
+    if (engineopt_.init_heading_method != 1 || !chen_aligning_ || isAligned) {
+        return;
+    }
+
+    Eigen::Vector3d dtheta = imucur_.dtheta;
+    if (!imu_already_compensated) {
+        dtheta -= imuerror_.gyrbias * imucur_.dt;
+    }
+
+    Eigen::Vector3d rotvec = dtheta;
+    if (chen_have_prev_dtheta_) {
+        rotvec += chen_prev_dtheta_.cross(dtheta) / 12.0;
+    }
+    if (rotvec.norm() > 1e-15) {
+        chen_qbn_ = (chen_qbn_ * Rotation::rotvec2quaternion(rotvec)).normalized();
+        chen_cbn_ = Rotation::quaternion2matrix(chen_qbn_);
+    }
+    chen_prev_dtheta_      = dtheta;
+    chen_have_prev_dtheta_ = true;
+}
+
+bool GIEngine::processChenHeadingAlignment() {
+    if (engineopt_.init_heading_method != 1 || !haveHorizonalAttitude || !gnssdata_.isPosValid) {
+        return false;
+    }
+    if (!chen_aligning_) {
+        resetChenHeadingAlignment();
+    }
+    if (chen_have_last_gnss_ &&
+        isSameGnssEpoch(gnssdata_.week, gnssdata_.time, chen_last_gnss_week_, chen_last_gnss_time_)) {
+        return false;
+    }
+
+    if (!chen_have_start_gnss_) {
+        chen_start_week_      = gnssdata_.week;
+        chen_start_time_      = gnssdata_.time;
+        chen_last_gnss_week_  = gnssdata_.week;
+        chen_last_gnss_time_  = gnssdata_.time;
+        chen_start_blh_       = gnssdata_.blh;
+        chen_last_blh_        = gnssdata_.blh;
+        chen_have_start_gnss_ = true;
+        chen_have_last_gnss_  = true;
+        return false;
+    }
+
+    Eigen::Vector3d step_n = Earth::DR(chen_last_blh_) * (gnssdata_.blh - chen_last_blh_);
+    double step_distance   = step_n.head<2>().norm();
+    if (step_distance > 0.0) {
+        chen_dr_delta_ += chen_cbn_ * Eigen::Vector3d(step_distance, 0.0, 0.0);
+    }
+
+    chen_last_gnss_week_ = gnssdata_.week;
+    chen_last_gnss_time_ = gnssdata_.time;
+    chen_last_blh_       = gnssdata_.blh;
+
+    double duration            = gnssTimeDiff(gnssdata_.week, gnssdata_.time, chen_start_week_, chen_start_time_);
+    Eigen::Vector3d gnss_delta = Earth::DR(chen_start_blh_) * (gnssdata_.blh - chen_start_blh_);
+    double gnss_distance       = gnss_delta.head<2>().norm();
+    double dr_distance         = chen_dr_delta_.head<2>().norm();
+    if (duration < engineopt_.init_heading_duration || gnss_distance < engineopt_.init_heading_min_dist ||
+        dr_distance < 1e-6) {
+        return false;
+    }
+
+    double yaw = std::atan2(gnss_delta[1], gnss_delta[0]) - std::atan2(chen_dr_delta_[1], chen_dr_delta_[0]);
+    yaw        = normalizeHeading(yaw);
+
+    if (!gnssdata_.isVelValid && duration > 0.0) {
+        gnssdata_.vel = gnss_delta / duration;
+    }
+
+    Eigen::Matrix3d yaw_correction = Rotation::euler2matrix(Eigen::Vector3d(0.0, 0.0, yaw));
+    completeAlignment(yaw_correction * chen_cbn_);
+    return true;
+}
+
+void GIEngine::completeAlignment(const Eigen::Matrix3d &cbn) {
+    pvacur_.att.cbn   = cbn;
+    pvacur_.att.qbn   = Rotation::matrix2quaternion(cbn).normalized();
+    pvacur_.att.euler = Rotation::matrix2euler(cbn);
+    pvacur_.att.qbv   = Rotation::euler2quaternion(Eigen::Vector3d(0.0, 0.0, 0.0));
+    pvacur_.att.cbv   = Rotation::euler2matrix(Eigen::Vector3d(0.0, 0.0, 0.0));
+    pvacur_.pos       = gnssdata_.blh;
+    pvacur_.vel       = gnssdata_.vel;
+    pvapre_           = pvacur_;
+    isAligned         = true;
+    alignedTime       = gnssdata_.time;
+    alignedWeek       = gnssdata_.week;
+    print_init_info();
+    while (!imuwindow_.empty()) {
+        IMU imu = imuwindow_.front();
+        if (imu.week < alignedWeek || (imu.week == alignedWeek && imu.time <= alignedTime)) {
+            imuwindow_.pop_front();
+        } else {
+            break;
+        }
+    }
+}
+
 void GIEngine::alignProcess() {
     std::vector<double> average;
     average.resize(6);
@@ -1106,29 +1248,15 @@ void GIEngine::alignProcess() {
             // imuerror_.accbias.setZero();
         }
         haveHorizonalAttitude = true;
+        if (engineopt_.init_heading_method == 1) {
+            resetChenHeadingAlignment();
+        }
     } else {
-        if (haveHorizonalAttitude && gnssdata_.isvalid && gnssdata_.vel.norm() > 2.0) {
-            double yaw           = atan2(gnssdata_.vel[1], gnssdata_.vel[0]);
-            pvacur_.att.euler[2] = yaw;
-            pvacur_.att.qbn      = Rotation::euler2quaternion(pvacur_.att.euler);
-            pvacur_.att.cbn      = Rotation::euler2matrix(pvacur_.att.euler);
-            pvacur_.att.qbv      = Rotation::euler2quaternion(Eigen::Vector3d(0.0, 0.0, 0));
-            pvacur_.att.cbv      = Rotation::euler2matrix(Eigen::Vector3d(0.0, 0.0, 0));
-            pvacur_.pos          = gnssdata_.blh;
-            pvacur_.vel          = gnssdata_.vel;
-            pvapre_              = pvacur_;
-            isAligned            = true;
-            alignedTime          = gnssdata_.time;
-            alignedWeek          = gnssdata_.week;
-            print_init_info();
-            while (!imuwindow_.empty()) {
-                IMU imu = imuwindow_.front();
-                if (imu.week < alignedWeek || (imu.week == alignedWeek && imu.time <= alignedTime)) {
-                    imuwindow_.pop_front();
-                } else {
-                    break;
-                }
-            }
+        if (engineopt_.init_heading_method == 1) {
+            processChenHeadingAlignment();
+        } else if (haveHorizonalAttitude && gnssdata_.isvalid && gnssdata_.vel.norm() > 2.0) {
+            pvacur_.att.euler[2] = atan2(gnssdata_.vel[1], gnssdata_.vel[0]);
+            completeAlignment(Rotation::euler2matrix(pvacur_.att.euler));
         }
     }
 }

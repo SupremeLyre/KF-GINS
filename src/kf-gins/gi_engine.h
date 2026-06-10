@@ -63,6 +63,7 @@ public:
         if (compensate) {
             imuCompensate(imucur_);
         }
+        updateChenHeadingAttitude(compensate);
         if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= 10.0) {
             imuwindow_.push_back(imucur_);
         } else {
@@ -315,6 +316,10 @@ protected:
                    bool enable_adaptive = false);
     KFFilterType configuredFilterType(int configured_type, KFFilterType default_type) const;
     KFFilterType configuredFilterType(KFFilterType default_type) const;
+    void resetChenHeadingAlignment();
+    void updateChenHeadingAttitude(bool imu_already_compensated);
+    bool processChenHeadingAlignment();
+    void completeAlignment(const Eigen::Matrix3d &cbn);
 
     /**
      * @brief 检查协方差对角线元素是否都为正
@@ -343,6 +348,20 @@ protected:
     // 对齐过程统计
     int align_update_count_ = 0;
     std::vector<Eigen::Vector3d> gyro_bias_history_;
+    bool chen_aligning_               = false;
+    bool chen_have_start_gnss_        = false;
+    bool chen_have_last_gnss_         = false;
+    bool chen_have_prev_dtheta_       = false;
+    double chen_start_week_           = 0.0;
+    double chen_start_time_           = 0.0;
+    double chen_last_gnss_week_       = 0.0;
+    double chen_last_gnss_time_       = 0.0;
+    Eigen::Vector3d chen_start_blh_   = Eigen::Vector3d::Zero();
+    Eigen::Vector3d chen_last_blh_    = Eigen::Vector3d::Zero();
+    Eigen::Vector3d chen_dr_delta_    = Eigen::Vector3d::Zero();
+    Eigen::Vector3d chen_prev_dtheta_ = Eigen::Vector3d::Zero();
+    Eigen::Quaterniond chen_qbn_      = Eigen::Quaterniond::Identity();
+    Eigen::Matrix3d chen_cbn_         = Eigen::Matrix3d::Identity();
 
     // IMU状态（位置、速度、姿态和IMU误差）
     // imu state (position, velocity, attitude and imu error)

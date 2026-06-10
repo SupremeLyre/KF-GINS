@@ -94,6 +94,9 @@ struct GIEngineOptions {
     bool enable_gnss_vel;
     bool enable_nhc;
     bool enable_zupt;
+    int init_heading_method       = 0;   // 0: GNSS velocity, 1: Chen trajectory matching
+    double init_heading_duration  = 5.0; // [s], used by Chen method
+    double init_heading_min_dist  = 2.0; // [m], used by Chen method
     int kf_type             = -1; // -1: use call-site default, 0: EKF, 1: Huber, 2: IGG3, 3: Denish
     int kf_gnss_pos_type    = -1;
     int kf_gnss_vel_type    = -1;

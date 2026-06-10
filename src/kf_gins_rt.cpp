@@ -536,6 +536,28 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         opt1.enable_gnss_vel      = config["options"]["enable_gnss_vel"].as<bool>();
         opt1.enable_nhc           = config["options"]["enable_nhc"].as<bool>();
         opt1.enable_zupt          = config["options"]["enable_zupt"].as<bool>();
+        if (config["options"]["init_heading_method"]) {
+            opt1.init_heading_method = config["options"]["init_heading_method"].as<int>();
+            if (opt1.init_heading_method < 0 || opt1.init_heading_method > 1) {
+                std::cout << "Failed when loading configuration. Please check initial heading method!" << std::endl;
+                return false;
+            }
+        }
+        if (config["options"]["init_heading_duration"]) {
+            opt1.init_heading_duration = config["options"]["init_heading_duration"].as<double>();
+            if (opt1.init_heading_duration <= 0.0) {
+                std::cout << "Failed when loading configuration. Please check initial heading duration!" << std::endl;
+                return false;
+            }
+        }
+        if (config["options"]["init_heading_min_dist"]) {
+            opt1.init_heading_min_dist = config["options"]["init_heading_min_dist"].as<double>();
+            if (opt1.init_heading_min_dist < 0.0) {
+                std::cout << "Failed when loading configuration. Please check initial heading minimum distance!"
+                          << std::endl;
+                return false;
+            }
+        }
     } catch (YAML::Exception &exception) {
         std::cout << "Failed when loading configuration. Please check engine options!" << std::endl;
         return false;

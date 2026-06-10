@@ -93,3 +93,7 @@ kf:
   zupt_type: -1
   nhc_type: -1
   adaptive: false
+options:
+  init_heading_method: 1
+  init_heading_duration: 20.0
+  init_heading_min_dist: 20.0
