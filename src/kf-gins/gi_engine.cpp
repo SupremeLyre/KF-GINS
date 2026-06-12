@@ -977,17 +977,16 @@ int GIEngine::zupt(PVA pvacur_) {
     dz(0) = vn[0];
     dz(1) = vn[1];
     dz(2) = vn[2];
-#if 1
-    // Generate ZUPT covariance using Decision Tree
-    Eigen::Vector3d noise_std = DecisionTreeZUPT::getInstance().predict(current_acc_std_, current_gyr_std_);
+    Eigen::Vector3d noise_std;
+    if (engineopt_.zuptopt.has_vel_std) {
+        noise_std = engineopt_.zuptopt.vel_std;
+    } else {
+        // Generate ZUPT covariance using Decision Tree
+        noise_std = DecisionTreeZUPT::getInstance().predict(current_acc_std_, current_gyr_std_);
+    }
     R(0, 0)                   = pow(noise_std[0], 2);
     R(1, 1)                   = pow(noise_std[1], 2);
     R(2, 2)                   = pow(noise_std[2], 2);
-#else
-    R(0, 0) = pow(0.02, 2);
-    R(1, 1) = pow(0.02, 2);
-    R(2, 2) = pow(0.01, 2);
-#endif
 
     EKFUpdate(dz, H, R, configuredFilterType(engineopt_.kf_zupt_type, KFFilterType::EKF),
               engineopt_.kf_enable_adaptive);
@@ -1000,19 +999,14 @@ int GIEngine::zupt(PVA pvacur_) {
 }
 
 bool GIEngine::isStatic(std::vector<double> &average) {
-    bool isZupt{false};
     bool flag_t{false};
+    bool imu_static{false};
     Eigen::Vector3d accmean{0.0, 0.0, 0.0};
     Eigen::Vector3d gyromean{0.0, 0.0, 0.0};
     Eigen::Vector3d accstd{0.0, 0.0, 0.0};
     Eigen::Vector3d gyrstd{0.0, 0.0, 0.0};
     Eigen::Vector3d resacc{0.0, 0.0, 0.0};
     Eigen::Vector3d resgyr{0.0, 0.0, 0.0};
-    Eigen::Vector3d gravity{0.0, 0.0, Earth::gravity(pvacur_.pos)};
-    // GNSS速度小于阈值，直接成立
-    if (gnssdata_.vel.norm() != 0.0 && gnssdata_.vel.norm() < options_.engineopt.zuptopt.vel_threshold) {
-        isZupt = true;
-    }
     // 利用双向队列存储imu原始数据，用于进行静止判断
     if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= options_.engineopt.zuptopt.interval) {
         return false;
@@ -1052,24 +1046,38 @@ bool GIEngine::isStatic(std::vector<double> &average) {
         if (resacc.norm() < 3 * accstd.norm() && resgyr.norm() < 3 * gyrstd.norm()) {
             flag_t = true;
         }
-        if (flag_t && accstd.norm() < options_.engineopt.zuptopt.fb_threshold &&
-            gyrstd.norm() * R2D < options_.engineopt.zuptopt.wib_threshold) {
-            isZupt = true;
+        imu_static = flag_t && accstd.norm() < options_.engineopt.zuptopt.fb_threshold &&
+                     gyrstd.norm() * R2D < options_.engineopt.zuptopt.wib_threshold;
+    }
+    if (!imu_static) {
+        return false;
+    }
+
+    bool has_recent_gnss_vel = false;
+    bool velocity_static     = false;
+    if (gnssdata_.isVelValid) {
+        const double gnss_age = std::fabs(gnssTimeDiff(gnssdata_.week, gnssdata_.time, week_, imucur_.time));
+        has_recent_gnss_vel  = gnss_age <= 1.0;
+        if (has_recent_gnss_vel) {
+            velocity_static = gnssdata_.vel.norm() < options_.engineopt.zuptopt.vel_threshold;
         }
+    }
+    if (!has_recent_gnss_vel) {
+        velocity_static = pvacur_.vel.norm() < options_.engineopt.zuptopt.vel_threshold;
     }
     // LOGI << "accstd: " << std::format("{:.6f}", accstd.norm())
     //      << " m/s², gyrstd: " << std::format("{:.6f}", gyrstd.norm() * R2D)
     //      << " °/s, resacc: " << std::format("{:.6f}", resacc.norm())
     //      << " m/s, resgyr: " << std::format("{:.6f}", resgyr.norm() * R2D) << " °/s"
-    //      << ", isZupt: " << isZupt << std::endl;
-    if (isZupt) {
+    //      << ", isZupt: " << velocity_static << std::endl;
+    if (velocity_static) {
         // LOGI << "It's static now:" << std::format("{:.4f}", imucur_.time)
         //      << "gyro bias update:" << gyromean[0] * R2D * 3600 << "," << gyromean[1] * R2D * 3600 << ","
         //      << gyromean[2] * R2D * 3600 << " °/h" << std::endl;
         // imuerror_.gyrbias = gyromean;
         average = {gyromean[0], gyromean[1], gyromean[2], accmean[0], accmean[1], accmean[2]};
     }
-    return isZupt;
+    return velocity_static;
 }
 bool GIEngine::isTurning() {
     bool isTurn{false};

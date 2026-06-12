@@ -454,7 +454,8 @@ if __name__ == "__main__":
     # path = "./dataset/20260109/redbox2"
     # path = "./dataset/20260116/redbox1"
     # path = "./dataset/20260402/redbox3"
-    path = "/mnt/hdd1/datasets/KF-GINS-dataset/dataset/20260605/redbox4"
+    # path = "/mnt/hdd1/datasets/KF-GINS-dataset/dataset/20260605/redbox4"
+    path = "/mnt/hdd1/datasets/KF-GINS-dataset/dataset/20260612/redbox2"
     # 导航结果和导航误差
     navresult_filepath = path + "/KF_GINS_Navresult.pos"
     # refresult_filepath = path + "/../truth_complex.txt"

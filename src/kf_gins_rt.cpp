@@ -567,6 +567,15 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
         opt1.zuptopt.vel_threshold = config["zupt"]["vel_threshold"].as<double>();
         opt1.zuptopt.wib_threshold = config["zupt"]["wib_threshold"].as<double>();
         opt1.zuptopt.fb_threshold  = config["zupt"]["fb_threshold"].as<double>();
+        if (config["zupt"]["vel_std"]) {
+            auto vec = config["zupt"]["vel_std"].as<std::vector<double>>();
+            if (vec.size() != 3 || vec[0] <= 0.0 || vec[1] <= 0.0 || vec[2] <= 0.0) {
+                std::cout << "Failed when loading configuration. Please check zupt velocity std!" << std::endl;
+                return false;
+            }
+            opt1.zuptopt.vel_std     = Eigen::Vector3d(vec[0], vec[1], vec[2]);
+            opt1.zuptopt.has_vel_std = true;
+        }
     } catch (YAML::Exception &exception) {
         std::cout << "Failed when loading configuration. Please check zupt options!" << std::endl;
         return false;
