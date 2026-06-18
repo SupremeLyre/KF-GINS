@@ -31,7 +31,6 @@
 #include <Eigen/Eigen>
 #include <cmath>
 #include <format>
-#include <glog/logging.h>
 
 // Helper Namespace for ZUPT Decision Tree
 namespace DecisionTreeZUPT {

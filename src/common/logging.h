@@ -25,46 +25,18 @@
 
 #include <Eigen/Geometry>
 #include <absl/strings/str_format.h>
-#include <glog/logging.h>
-#include <glog/stl_logging.h>
 #include <iostream>
+#include <string>
 
 using std::string;
-
-#define LOGI (LOG(INFO))
-#define LOGW (LOG(WARNING))
-#define LOGE (LOG(ERROR))
-#define LOGF (LOG(FATAL))
-
-#if !DCHECK_IS_ON()
-#define DLOGI (static_cast<void>(0), true ? (void) 0 : google::LogMessageVoidify() & LOG(INFO))
-#define DLOGW (static_cast<void>(0), true ? (void) 0 : google::LogMessageVoidify() & LOG(WARNING))
-#define DLOGE (static_cast<void>(0), true ? (void) 0 : google::LogMessageVoidify() & LOG(ERROR))
-#define DLOGF (static_cast<void>(0), true ? (void) 0 : google::LogMessageVoidify() & LOG(FATAL))
-#else
-#define DLOGI LOGI
-#define DLOGW LOGW
-#define DLOGE LOGE
-#define DLOGF LOGF
-#endif
 
 class Logging {
 
 public:
     static void initialization(char **argv, bool logtostderr = true, bool logtofile = true) {
-        if (logtostderr & logtofile) {
-            FLAGS_alsologtostderr = true;
-        } else if (logtostderr) {
-            FLAGS_logtostderr = true;
-        }
-
-        if (logtostderr) {
-            // 输出颜色
-            FLAGS_colorlogtostderr = true;
-        }
-
-        // glog初始化
-        google::InitGoogleLogging(argv[0]);
+        (void) argv;
+        (void) logtostderr;
+        (void) logtofile;
     }
 
     template <typename T, int Rows, int Cols>

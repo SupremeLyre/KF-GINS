@@ -6,3 +6,4 @@ dataset/
 *.png
 *.txt
 .marscode/
+.cache/
