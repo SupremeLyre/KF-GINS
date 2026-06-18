@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/types.h"
 #include "common/angle.h"
+#include "common/types.h"
 #include "fileio/fileloader.h"
 #include "fileio/sensors_provider.hpp"
 
@@ -18,7 +18,7 @@ public:
     }
 
     double starttime() {
-        double starttime = -1.0;
+        double starttime  = -1.0;
         std::streampos sp = filefp_.tellg();
 
         filefp_.seekg(0, std::ios_base::beg);
@@ -57,7 +57,7 @@ public:
         while (YsAsm330FileLoader::load_()) {
             double time = temper.sow;
             time += 18;
-            double dt   = has_valid_imu_ ? time - imu_.time : dt_;
+            double dt = has_valid_imu_ ? time - imu_.time : dt_;
             if (has_valid_imu_ && (dt <= 0.0 || dt > 2.0 * dt_)) {
                 continue;
             }
@@ -67,8 +67,10 @@ public:
             imu_.time = time;
             imu_.dt   = dt;
 
-            imu_.accel << temper.acc[0] * 9.80665, temper.acc[1] * 9.80665, temper.acc[2] * 9.80665;
-            imu_.omega << temper.gyr[0] * D2R, temper.gyr[1] * D2R, temper.gyr[2] * D2R;
+            // imu_.accel << temper.acc[0] * 9.80665, temper.acc[1] * 9.80665, temper.acc[2] * 9.80665;
+            // imu_.omega << temper.gyr[0] * D2R, temper.gyr[1] * D2R, temper.gyr[2] * D2R;
+            imu_.accel << temper.acc[0], temper.acc[1], temper.acc[2];
+            imu_.omega << temper.gyr[0], temper.gyr[1], temper.gyr[2];
             imu_.dtheta = imu_.omega * imu_.dt;
             imu_.dvel   = imu_.accel * imu_.dt;
 
@@ -81,14 +83,14 @@ public:
 
 private:
     struct Temp {
-        int week = 0;
+        int week   = 0;
         double sow = 0.0;
         double gyr[3]{};
         double acc[3]{};
         double temperature = 0.0;
     } temper;
 
-    double dt_ = 0.0;
+    double dt_          = 0.0;
     bool has_valid_imu_ = false;
     IMU imu_, imu_pre_;
 
