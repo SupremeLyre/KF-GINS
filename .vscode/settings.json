@@ -19,8 +19,9 @@
             // "dataset/20260109/config.yaml",
             // "dataset/20260116/red_box.yaml",
             // "dataset/20260402/red_box.yaml",
-            "dataset/20260605/red_box.yaml",
+            // "dataset/20260605/red_box.yaml",
             // "dataset/20260612/red_box.yaml",
+            "dataset/20260625/red_box.yaml",
         ],
         "cwd": "/mnt/hdd1/datasets/KF-GINS-dataset/"
     },

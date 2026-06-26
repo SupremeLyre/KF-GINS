@@ -7,6 +7,8 @@
 
 #include <cstdio>
 
+#define YSASM330_DPS 1
+
 class YsAsm330FileLoader : public IImuFileLoader {
 public:
     YsAsm330FileLoader() = delete;
@@ -56,7 +58,8 @@ public:
     const IMU &next() {
         while (YsAsm330FileLoader::load_()) {
             double time = temper.sow;
-            time += 18;
+            // time += 18;
+            // time --;
             double dt = has_valid_imu_ ? time - imu_.time : dt_;
             if (has_valid_imu_ && (dt <= 0.0 || dt > 2.0 * dt_)) {
                 continue;
@@ -66,11 +69,13 @@ public:
             imu_.week = temper.week;
             imu_.time = time;
             imu_.dt   = dt;
-
-            // imu_.accel << temper.acc[0] * 9.80665, temper.acc[1] * 9.80665, temper.acc[2] * 9.80665;
-            // imu_.omega << temper.gyr[0] * D2R, temper.gyr[1] * D2R, temper.gyr[2] * D2R;
+#ifdef YSASM330_DPS
+            imu_.accel << temper.acc[0] * 9.80665, temper.acc[1] * 9.80665, temper.acc[2] * 9.80665;
+            imu_.omega << temper.gyr[0] * D2R, temper.gyr[1] * D2R, temper.gyr[2] * D2R;
+#else
             imu_.accel << temper.acc[0], temper.acc[1], temper.acc[2];
             imu_.omega << temper.gyr[0], temper.gyr[1], temper.gyr[2];
+#endif
             imu_.dtheta = imu_.omega * imu_.dt;
             imu_.dvel   = imu_.accel * imu_.dt;
 

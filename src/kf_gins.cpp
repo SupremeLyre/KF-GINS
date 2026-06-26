@@ -395,8 +395,7 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
                 }
                 return true;
             };
-            if (!load_kf_type("type", opt1.kf_type) ||
-                !load_kf_type("gnss_pos_type", opt1.kf_gnss_pos_type) ||
+            if (!load_kf_type("type", opt1.kf_type) || !load_kf_type("gnss_pos_type", opt1.kf_gnss_pos_type) ||
                 !load_kf_type("gnss_vel_type", opt1.kf_gnss_vel_type) ||
                 !load_kf_type("zupt_type", opt1.kf_zupt_type) || !load_kf_type("nhc_type", opt1.kf_nhc_type)) {
                 return false;
@@ -439,7 +438,7 @@ void writeNavResult(int week, double time, NavState &navstate, FileSaver &navfil
     // 保存导航结果
     // save navigation result
     if (fabs(time - (int) time) < 0.01) {
-        // if (1) {
+    // if (1) {
 #if 1
 
         result.clear();

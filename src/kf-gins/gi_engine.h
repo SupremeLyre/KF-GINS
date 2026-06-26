@@ -358,10 +358,14 @@ protected:
     double chen_last_gnss_time_       = 0.0;
     Eigen::Vector3d chen_start_blh_   = Eigen::Vector3d::Zero();
     Eigen::Vector3d chen_last_blh_    = Eigen::Vector3d::Zero();
+    Eigen::Vector3d chen_dr_blh_      = Eigen::Vector3d::Zero();
     Eigen::Vector3d chen_dr_delta_    = Eigen::Vector3d::Zero();
     Eigen::Vector3d chen_prev_dtheta_ = Eigen::Vector3d::Zero();
     Eigen::Quaterniond chen_qbn_      = Eigen::Quaterniond::Identity();
     Eigen::Matrix3d chen_cbn_         = Eigen::Matrix3d::Identity();
+    Eigen::Matrix3d chen_last_cbn_    = Eigen::Matrix3d::Identity();
+    double chen_match_dot_            = 0.0;
+    double chen_match_cross_          = 0.0;
 
     // IMU状态（位置、速度、姿态和IMU误差）
     // imu state (position, velocity, attitude and imu error)

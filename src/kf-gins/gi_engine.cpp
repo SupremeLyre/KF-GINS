@@ -1111,13 +1111,18 @@ void GIEngine::resetChenHeadingAlignment() {
     chen_last_gnss_time_   = 0.0;
     chen_start_blh_.setZero();
     chen_last_blh_.setZero();
+    chen_dr_blh_.setZero();
     chen_dr_delta_.setZero();
     chen_prev_dtheta_.setZero();
+    chen_last_cbn_.setIdentity();
+    chen_match_dot_   = 0.0;
+    chen_match_cross_ = 0.0;
 
     Eigen::Vector3d euler = pvacur_.att.euler;
     euler[2]              = 0.0;
     chen_qbn_             = Rotation::euler2quaternion(euler);
     chen_cbn_             = Rotation::quaternion2matrix(chen_qbn_);
+    chen_last_cbn_        = chen_cbn_;
 }
 
 void GIEngine::updateChenHeadingAttitude(bool imu_already_compensated) {
@@ -1146,6 +1151,9 @@ bool GIEngine::processChenHeadingAlignment() {
     if (engineopt_.init_heading_method != 1 || !haveHorizonalAttitude || !gnssdata_.isPosValid) {
         return false;
     }
+    if (gnssTimeDiff(gnssdata_.week, gnssdata_.time, imucur_.week, imucur_.time) > TIME_ALIGN_ERR) {
+        return false;
+    }
     if (!chen_aligning_) {
         resetChenHeadingAlignment();
     }
@@ -1161,6 +1169,8 @@ bool GIEngine::processChenHeadingAlignment() {
         chen_last_gnss_time_  = gnssdata_.time;
         chen_start_blh_       = gnssdata_.blh;
         chen_last_blh_        = gnssdata_.blh;
+        chen_dr_blh_          = gnssdata_.blh;
+        chen_last_cbn_        = chen_cbn_;
         chen_have_start_gnss_ = true;
         chen_have_last_gnss_  = true;
         return false;
@@ -1169,23 +1179,30 @@ bool GIEngine::processChenHeadingAlignment() {
     Eigen::Vector3d step_n = Earth::DR(chen_last_blh_) * (gnssdata_.blh - chen_last_blh_);
     double step_distance   = step_n.head<2>().norm();
     if (step_distance > 0.0) {
-        chen_dr_delta_ += chen_cbn_ * Eigen::Vector3d(step_distance, 0.0, 0.0);
+        Eigen::Vector3d ds_b(step_distance, 0.0, 0.0);
+        chen_dr_blh_ += Earth::DRi(chen_dr_blh_) * (chen_last_cbn_ * ds_b);
     }
 
     chen_last_gnss_week_ = gnssdata_.week;
     chen_last_gnss_time_ = gnssdata_.time;
     chen_last_blh_       = gnssdata_.blh;
+    chen_last_cbn_       = chen_cbn_;
 
     double duration            = gnssTimeDiff(gnssdata_.week, gnssdata_.time, chen_start_week_, chen_start_time_);
     Eigen::Vector3d gnss_delta = Earth::DR(chen_start_blh_) * (gnssdata_.blh - chen_start_blh_);
+    chen_dr_delta_             = Earth::DR(chen_start_blh_) * (chen_dr_blh_ - chen_start_blh_);
     double gnss_distance       = gnss_delta.head<2>().norm();
     double dr_distance         = chen_dr_delta_.head<2>().norm();
+    if (gnss_distance > 1e-6 && dr_distance > 1e-6) {
+        chen_match_dot_ += chen_dr_delta_[0] * gnss_delta[0] + chen_dr_delta_[1] * gnss_delta[1];
+        chen_match_cross_ += chen_dr_delta_[0] * gnss_delta[1] - chen_dr_delta_[1] * gnss_delta[0];
+    }
     if (duration < engineopt_.init_heading_duration || gnss_distance < engineopt_.init_heading_min_dist ||
         dr_distance < 1e-6) {
         return false;
     }
 
-    double yaw = std::atan2(gnss_delta[1], gnss_delta[0]) - std::atan2(chen_dr_delta_[1], chen_dr_delta_[0]);
+    double yaw = std::atan2(chen_match_cross_, chen_match_dot_);
     yaw        = normalizeHeading(yaw);
 
     if (!gnssdata_.isVelValid && duration > 0.0) {
