@@ -83,7 +83,6 @@ struct ZUPTOptions {
     double wib_threshold;
     double fb_threshold;
     Eigen::Vector3d vel_std = Eigen::Vector3d(0.02, 0.02, 0.01);
-    bool has_vel_std        = false;
 };
 struct NHCOptions {
     double lateral_cov  = 0.0025;

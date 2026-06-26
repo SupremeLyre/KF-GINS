@@ -32,202 +32,6 @@
 #include <cmath>
 #include <format>
 
-// Helper Namespace for ZUPT Decision Tree
-namespace DecisionTreeZUPT {
-
-struct Node {
-    bool is_leaf;
-    int feature_index; // 0: acc_std_norm, 1: gyr_std_norm
-    double threshold;
-    Eigen::Vector3d value; // For leaf: velocity measurement noise std (m/s)
-    Node *left  = nullptr;
-    Node *right = nullptr;
-
-    // Leaf constructor
-    Node(Eigen::Vector3d v)
-        : is_leaf(true)
-        , feature_index(-1)
-        , threshold(0)
-        , value(v) {
-    }
-    // Internal node constructor
-    Node(int idx, double th, Node *l, Node *r)
-        : is_leaf(false)
-        , feature_index(idx)
-        , threshold(th)
-        , value(Eigen::Vector3d::Zero())
-        , left(l)
-        , right(r) {
-    }
-
-    ~Node() {
-        if (left)
-            delete left;
-        if (right)
-            delete right;
-    }
-};
-
-class Tree {
-public:
-    Tree() {
-        // Construct a simple decision tree for ZUPT covariance adaptation
-        // Logic:
-        // If AccStd < 0.015 m/s^2:
-        //     If GyrStd < 0.005 rad/s: -> Very High Confidence (Noise: 0.01 m/s)
-        //     Else: -> High Confidence (Noise: 0.02 m/s)
-        // Else:
-        //     If AccStd < 0.05 m/s^2: -> Medium Confidence (Noise: 0.05 m/s)
-        //     Else: -> Low Confidence (Noise: 0.10 m/s)
-
-        Node *leaf_very_high = new Node(Eigen::Vector3d(0.01, 0.01, 0.01));
-        Node *leaf_high      = new Node(Eigen::Vector3d(0.02, 0.02, 0.01));
-        Node *leaf_medium    = new Node(Eigen::Vector3d(0.05, 0.05, 0.01));
-        Node *leaf_low       = new Node(Eigen::Vector3d(0.10, 0.10, 0.01));
-
-        Node *split_gyr   = new Node(1, 0.005, leaf_very_high, leaf_high);
-        Node *split_acc_2 = new Node(0, 0.05, leaf_medium, leaf_low);
-
-        root = new Node(0, 0.015, split_gyr, split_acc_2);
-    }
-
-    ~Tree() {
-        if (root)
-            delete root;
-    }
-
-    Eigen::Vector3d predict(const Eigen::Vector3d &acc_std, const Eigen::Vector3d &gyr_std) {
-        Node *current = root;
-        while (current && !current->is_leaf) {
-            double feature_val = 0.0;
-            if (current->feature_index == 0)
-                feature_val = acc_std.norm();
-            else if (current->feature_index == 1)
-                feature_val = gyr_std.norm();
-
-            if (feature_val <= current->threshold) {
-                current = current->left;
-            } else {
-                current = current->right;
-            }
-        }
-        return current ? current->value : Eigen::Vector3d(0.02, 0.02, 0.01); // Default fallback
-    }
-
-private:
-    Node *root = nullptr;
-};
-
-// Singleton instance
-static Tree &getInstance() {
-    static Tree instance;
-    return instance;
-}
-
-} // namespace DecisionTreeZUPT
-
-// Helper Namespace for NHC Decision Tree
-namespace DecisionTreeNHC {
-
-struct Node {
-    bool is_leaf;
-    int feature_index; // 0: forward_velocity, 1: abs_gyro_z
-    double threshold;
-    Eigen::Vector2d value; // For leaf: lateral, vertical noise std (m/s)
-    Node *left  = nullptr;
-    Node *right = nullptr;
-
-    // Leaf constructor
-    Node(Eigen::Vector2d v)
-        : is_leaf(true)
-        , feature_index(-1)
-        , threshold(0)
-        , value(v) {
-    }
-    // Internal node constructor
-    Node(int idx, double th, Node *l, Node *r)
-        : is_leaf(false)
-        , feature_index(idx)
-        , threshold(th)
-        , value(Eigen::Vector2d::Zero())
-        , left(l)
-        , right(r) {
-    }
-
-    ~Node() {
-        if (left)
-            delete left;
-        if (right)
-            delete right;
-    }
-};
-
-class Tree {
-public:
-    Tree() {
-        // Construct a simple decision tree for NHC covariance adaptation
-        // Logic:
-        // If AbsGyroZ > 5 deg/s (Turning):
-        //     Lateral Noise: 1.0 m/s (Loose)
-        //     Vertical Noise: 2.0 m/s (Loose)
-        // Else (Straight):
-        //     If ForwardVel > 10 m/s:
-        //          Lateral Noise: 0.05 m/s (Tight, high dynamic stability)
-        //          Vertical Noise: 0.10 m/s
-        //     Else (Low speed):
-        //          Lateral Noise: 0.10 m/s
-        //          Vertical Noise: 0.10 m/s
-
-        Node *leaf_turning             = new Node(Eigen::Vector2d(0.05, 0.5));
-        Node *leaf_straight_high_speed = new Node(Eigen::Vector2d(0.05, 0.5));
-        Node *leaf_straight_low_speed  = new Node(Eigen::Vector2d(0.05, 0.5));
-
-        // Split on Velocity
-        Node *split_vel =
-            new Node(0, 10.0, leaf_straight_low_speed, leaf_straight_high_speed); // left <= th, right > th
-
-        // Root splits on Gyro Z
-        // If gyro <= 5 deg/s (approx 0.087 rad/s) -> Straight (check vel)
-        // Else -> Turning
-        double gyro_th = 5.0 * D2R;
-        root           = new Node(1, gyro_th, split_vel, leaf_turning);
-    }
-
-    ~Tree() {
-        if (root)
-            delete root;
-    }
-
-    Eigen::Vector2d predict(double forward_vel, double abs_gyro_z) {
-        Node *current = root;
-        while (current && !current->is_leaf) {
-            double feature_val = 0.0;
-            if (current->feature_index == 0)
-                feature_val = forward_vel;
-            else if (current->feature_index == 1)
-                feature_val = abs_gyro_z;
-
-            if (feature_val <= current->threshold) {
-                current = current->left;
-            } else {
-                current = current->right;
-            }
-        }
-        return current ? current->value : Eigen::Vector2d(0.05, 0.5);
-    }
-
-private:
-    Node *root = nullptr;
-};
-
-// Singleton instance
-static Tree &getInstance() {
-    static Tree instance;
-    return instance;
-}
-
-} // namespace DecisionTreeNHC
-
 namespace {
 constexpr double GPS_WEEK_SECONDS = 604800.0;
 
@@ -927,18 +731,7 @@ int GIEngine::nhc(PVA pvacur_) {
 
             dz(nv) = vb[i];
 
-            // R(nv, nv) = pow(1, 2);
-#if 0
-            // Generate NHC covariance using Decision Tree
-            Eigen::Vector2d nhc_noise = DecisionTreeNHC::getInstance().predict(fabs(vb[0]), fabs(imucur_.omega[2]));
-            if (i == 1) { // Lateral
-                R(nv, nv) = pow(nhc_noise[0], 2);
-            } else { // Vertical
-                R(nv, nv) = pow(nhc_noise[1], 2);
-            }
-#else
             R(nv, nv) = i == 1 ? pow(engineopt_.nhcopt.lateral_cov, 2) : pow(engineopt_.nhcopt.vertical_cov, 2);
-#endif
             nv++;
         }
     }
@@ -976,13 +769,7 @@ int GIEngine::zupt(PVA pvacur_) {
     dz(0) = vn[0];
     dz(1) = vn[1];
     dz(2) = vn[2];
-    Eigen::Vector3d noise_std;
-    if (engineopt_.zuptopt.has_vel_std) {
-        noise_std = engineopt_.zuptopt.vel_std;
-    } else {
-        // Generate ZUPT covariance using Decision Tree
-        noise_std = DecisionTreeZUPT::getInstance().predict(current_acc_std_, current_gyr_std_);
-    }
+    Eigen::Vector3d noise_std = engineopt_.zuptopt.vel_std;
     R(0, 0)                   = pow(noise_std[0], 2);
     R(1, 1)                   = pow(noise_std[1], 2);
     R(2, 2)                   = pow(noise_std[2], 2);
@@ -1032,10 +819,6 @@ bool GIEngine::isStatic(std::vector<double> &average) {
         }
         gyrstd /= imuwindow_.size();
         gyrstd = gyrstd.cwiseSqrt();
-
-        // Save std devs for ZUPT covariance generation
-        current_acc_std_ = accstd;
-        current_gyr_std_ = gyrstd;
 
         // 计算当前历元加速度角速度与均值的差
         resacc = imucur_.accel - accmean;

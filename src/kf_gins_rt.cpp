@@ -573,8 +573,7 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
                 std::cout << "Failed when loading configuration. Please check zupt velocity std!" << std::endl;
                 return false;
             }
-            opt1.zuptopt.vel_std     = Eigen::Vector3d(vec[0], vec[1], vec[2]);
-            opt1.zuptopt.has_vel_std = true;
+            opt1.zuptopt.vel_std = Eigen::Vector3d(vec[0], vec[1], vec[2]);
         }
     } catch (YAML::Exception &exception) {
         std::cout << "Failed when loading configuration. Please check zupt options!" << std::endl;

@@ -155,8 +155,6 @@ public:
     void alignProcess();
     void finishAlignNow();
     std::vector<double> average;
-    Eigen::Vector3d current_acc_std_ = Eigen::Vector3d::Zero();
-    Eigen::Vector3d current_gyr_std_ = Eigen::Vector3d::Zero();
     // 加速度计平均值求水平姿态
     bool getImuHorizonalAttitude(std::vector<double> &average, Vector3d &blh) {
         Vector3d gn = {0, 0, Earth::gravity(blh)};
