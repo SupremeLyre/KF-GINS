@@ -95,15 +95,18 @@ struct GIEngineOptions {
     bool enable_gnss_vel;
     bool enable_nhc;
     bool enable_zupt;
-    int init_heading_method       = 0;   // 0: GNSS velocity, 1: Chen trajectory matching
-    double init_heading_duration  = 5.0; // [s], used by Chen method
-    double init_heading_min_dist  = 2.0; // [m], used by Chen method
-    int kf_type             = -1; // -1: use call-site default, 0: EKF, 1: Huber, 2: IGG3, 3: Denish
-    int kf_gnss_pos_type    = -1;
-    int kf_gnss_vel_type    = -1;
-    int kf_zupt_type        = -1;
-    int kf_nhc_type         = -1;
-    bool kf_enable_adaptive = false;
+    int init_heading_method      = 0;   // 0: GNSS velocity, 1: Chen trajectory matching
+    double init_heading_duration = 5.0; // [s], used by Chen method
+    double init_heading_min_dist = 2.0; // [m], used by Chen method
+    int kf_type                  = -1;  // -1: use call-site default, 0: EKF, 1: Huber, 2: IGG3, 3: Denish, 4: ExpHuber
+    int kf_gnss_pos_type         = -1;
+    int kf_gnss_vel_type         = -1;
+    int kf_zupt_type             = -1;
+    int kf_nhc_type              = -1;
+    bool kf_enable_adaptive      = false;
+    double exp_huber_k0          = 1.5;
+    double exp_huber_c           = 3.0;
+    double exp_huber_max_factor  = 100.0;
     ZUPTOptions zuptopt;
     NHCOptions nhcopt;
 };

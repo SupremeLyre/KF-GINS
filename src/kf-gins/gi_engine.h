@@ -259,7 +259,7 @@ protected:
      * @param [in] initstate_std 初始状态标准差
      *                           initial state std
      * */
-    enum class KFFilterType { EKF, Huber, IGG3, Denish };
+    enum class KFFilterType { EKF, Huber, IGG3, Denish, ExpHuber };
     void initialize(const NavState &initstate, const NavState &initstate_std);
 
     /**

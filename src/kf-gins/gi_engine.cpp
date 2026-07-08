@@ -29,6 +29,7 @@
 #include "insmech.h"
 #include "kf-gins/kf_gins_types.h"
 #include <Eigen/Eigen>
+#include <algorithm>
 #include <cmath>
 #include <format>
 
@@ -374,7 +375,9 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
         // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
-        pvacur_.status |= 0b0010;
+        if (nv > 1) {
+            pvacur_.status |= 0b0010;
+        }
     }
 }
 
@@ -411,8 +414,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     // EKF更新协方差和误差状态
     // do EKF update to update covariance and error state
     if (engineopt_.enable_gnss_pos && gnssdata.isPosValid) {
-        EKFUpdate(dz, H_gnsspos, R_gnsspos,
-                  configuredFilterType(engineopt_.kf_gnss_pos_type, KFFilterType::Huber),
+        EKFUpdate(dz, H_gnsspos, R_gnsspos, configuredFilterType(engineopt_.kf_gnss_pos_type, KFFilterType::Huber),
                   engineopt_.kf_enable_adaptive);
     }
     // GNSS速度观测矩阵
@@ -436,8 +438,7 @@ void GIEngine::gnssUpdate(GNSS &gnssdata) {
     Eigen::MatrixXd dz_vel;
     dz_vel = antenna_vel - gnssdata.vel;
     if (engineopt_.enable_gnss_vel && gnssdata.isVelValid) {
-        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel,
-                  configuredFilterType(engineopt_.kf_gnss_vel_type, KFFilterType::Huber),
+        EKFUpdate(dz_vel, H_gnssvel, R_gnssvel, configuredFilterType(engineopt_.kf_gnss_vel_type, KFFilterType::Huber),
                   engineopt_.kf_enable_adaptive);
     }
     // GNSS更新之后设置为不可用
@@ -504,6 +505,24 @@ void GIEngine::EKFUpdate(Eigen::MatrixXd &dz, Eigen::MatrixXd &H, Eigen::MatrixX
                 double v_normalized = fabs(dz(i, 0)) / sigma;
                 if (v_normalized > k0) {
                     adj_R(i, i) *= v_normalized / k0; // 调整等价权
+                }
+            }
+            break;
+        }
+        case KFFilterType::ExpHuber: {
+            double k0            = engineopt_.exp_huber_k0;
+            double c             = engineopt_.exp_huber_c;
+            double max_factor    = engineopt_.exp_huber_max_factor;
+            Eigen::MatrixXd HPHt = H * Cov_ * H.transpose();
+            for (int i = 0; i < dz.rows(); i++) {
+                double sigma = sqrt((HPHt + R)(i, i));
+                if (sigma < 1e-12)
+                    continue;
+                double v_normalized = fabs(dz(i, 0)) / sigma;
+                if (v_normalized > k0) {
+                    double du     = v_normalized - k0;
+                    double factor = (v_normalized / k0) * std::exp(du * du / (2.0 * c * c));
+                    adj_R(i, i) *= std::min(factor, max_factor);
                 }
             }
             break;
@@ -594,6 +613,8 @@ GIEngine::KFFilterType GIEngine::configuredFilterType(int configured_type, KFFil
             return KFFilterType::IGG3;
         case 3:
             return KFFilterType::Denish;
+        case 4:
+            return KFFilterType::ExpHuber;
         default:
             return default_type;
     }
@@ -709,7 +730,7 @@ int GIEngine::nhc(PVA pvacur_) {
     H.resize(2, Cov_.rows());
     H.setZero();
     int nv = 0;
-    if (fabs(vb[0]) > 2) {
+    if (fabs(vb[0]) > 0.7) {
         for (int i = 1; i < 3; i++) {
 #if 1
             if (fabs(vb[i]) > 0.5) {
@@ -766,9 +787,9 @@ int GIEngine::zupt(PVA pvacur_) {
     H.resize(3, Cov_.rows());
     H.setZero();
     H.block(0, V_ID, 3, 3) << Matrix3d::Identity();
-    dz(0) = vn[0];
-    dz(1) = vn[1];
-    dz(2) = vn[2];
+    dz(0)                     = vn[0];
+    dz(1)                     = vn[1];
+    dz(2)                     = vn[2];
     Eigen::Vector3d noise_std = engineopt_.zuptopt.vel_std;
     R(0, 0)                   = pow(noise_std[0], 2);
     R(1, 1)                   = pow(noise_std[1], 2);
@@ -839,7 +860,7 @@ bool GIEngine::isStatic(std::vector<double> &average) {
     bool velocity_static     = false;
     if (gnssdata_.isVelValid) {
         const double gnss_age = std::fabs(gnssTimeDiff(gnssdata_.week, gnssdata_.time, week_, imucur_.time));
-        has_recent_gnss_vel  = gnss_age <= 1.0;
+        has_recent_gnss_vel   = gnss_age <= 1.0;
         if (has_recent_gnss_vel) {
             velocity_static = gnssdata_.vel.norm() < options_.engineopt.zuptopt.vel_threshold;
         }

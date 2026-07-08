@@ -46,6 +46,7 @@
 #include "fileio/sensors_provider.hpp"
 #include "fileio/yisfileloader.hpp"
 #include "kf-gins/gi_engine.h"
+#include "kf-gins/gi_engine_leqf.h"
 #include "kf-gins/gi_engine_psi.h"
 #include "kf-gins/kf_gins_types.h"
 
@@ -149,7 +150,7 @@ int main(int argc, char *argv[]) {
             giengine = std::make_shared<GIEngine_PSI>(options);
             break;
         case EQF:
-            giengine = std::make_shared<GIEngine>(options);
+            giengine = std::make_shared<GIEngine_LEQF>(options);
             break;
         default:
             giengine = std::make_shared<GIEngine>(options);
@@ -388,7 +389,7 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
                     return true;
                 }
                 target = config["kf"][key].as<int>();
-                if (target < -1 || target > 3) {
+                if (target < -1 || target > 4) {
                     std::cout << "Failed when loading configuration. Please check kf " << key << "!" << std::endl;
                     return false;
                 }
@@ -401,6 +402,28 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
             }
             if (config["kf"]["adaptive"]) {
                 opt1.kf_enable_adaptive = config["kf"]["adaptive"].as<bool>();
+            }
+            if (config["kf"]["exp_huber_k0"]) {
+                opt1.exp_huber_k0 = config["kf"]["exp_huber_k0"].as<double>();
+                if (opt1.exp_huber_k0 <= 0.0) {
+                    std::cout << "Failed when loading configuration. Please check kf exp_huber_k0!" << std::endl;
+                    return false;
+                }
+            }
+            if (config["kf"]["exp_huber_c"]) {
+                opt1.exp_huber_c = config["kf"]["exp_huber_c"].as<double>();
+                if (opt1.exp_huber_c <= 0.0) {
+                    std::cout << "Failed when loading configuration. Please check kf exp_huber_c!" << std::endl;
+                    return false;
+                }
+            }
+            if (config["kf"]["exp_huber_max_factor"]) {
+                opt1.exp_huber_max_factor = config["kf"]["exp_huber_max_factor"].as<double>();
+                if (opt1.exp_huber_max_factor < 1.0) {
+                    std::cout << "Failed when loading configuration. Please check kf exp_huber_max_factor!"
+                              << std::endl;
+                    return false;
+                }
             }
         } catch (YAML::Exception &exception) {
             std::cout << "Failed when loading configuration. Please check kf options!" << std::endl;
