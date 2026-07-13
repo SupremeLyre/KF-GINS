@@ -61,7 +61,7 @@ public:
             // time += 18;
             // time --;
             double dt = has_valid_imu_ ? time - imu_.time : dt_;
-            if (has_valid_imu_ && (dt <= 0.0 || dt > 2.0 * dt_)) {
+            if (has_valid_imu_ && (dt <= 0.0 || dt > 2.1 * dt_)) {
                 continue;
             }
 

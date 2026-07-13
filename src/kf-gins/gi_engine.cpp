@@ -730,7 +730,7 @@ int GIEngine::nhc(PVA pvacur_) {
     H.resize(2, Cov_.rows());
     H.setZero();
     int nv = 0;
-    if (fabs(vb[0]) > 0.7) {
+    if (fabs(vb[0]) > 0.65) {
         for (int i = 1; i < 3; i++) {
 #if 1
             if (fabs(vb[i]) > 0.5) {
