@@ -23,6 +23,7 @@
 #ifndef GI_ENGINE_H
 #define GI_ENGINE_H
 #include <Eigen/Dense>
+#include <algorithm>
 #include <cstdlib>
 #include <deque>
 
@@ -64,7 +65,8 @@ public:
             imuCompensate(imucur_);
         }
         updateChenHeadingAttitude(compensate);
-        if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= 10.0) {
+        const double window_duration = std::max(engineopt_.zuptopt.window_duration, 1.0);
+        if (imuwindow_.empty() || imuwindow_.back().time - imuwindow_.front().time <= window_duration) {
             imuwindow_.push_back(imucur_);
         } else {
             // 退一个头部元素，在尾部插入一个新元素
@@ -341,6 +343,7 @@ protected:
     IMU imupre_;
     IMU imucur_;
     GNSS gnssdata_;
+    double last_nhc_time_ = -1.0;
     // IMU 原始数据滑动窗口
     std::deque<IMU> imuwindow_;
     // 对齐过程统计

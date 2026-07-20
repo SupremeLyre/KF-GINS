@@ -167,6 +167,55 @@ int main(int argc, char *argv[]) {
     }
     std::unique_ptr<IGnssFileLoader> gnssfile;
     std::unique_ptr<IImuFileLoader> imufile;
+    PppsolOptions pppsol_options;
+    if (config["pppsol"]) {
+        try {
+            if (config["pppsol"]["spp_pos_std_scale"]) {
+                const auto scale_node = config["pppsol"]["spp_pos_std_scale"];
+                if (scale_node.IsScalar()) {
+                    pppsol_options.spp_pos_std_scale.setConstant(scale_node.as<double>());
+                } else {
+                    auto vec = scale_node.as<std::vector<double>>();
+                    if (vec.size() != 3) {
+                        std::cout << "Failed when loading configuration. PPPSOL SPP position STD scale needs 3 values!"
+                                  << std::endl;
+                        return -1;
+                    }
+                    pppsol_options.spp_pos_std_scale = Eigen::Vector3d(vec[0], vec[1], vec[2]);
+                }
+            }
+            if (config["pppsol"]["spp_vel_std_scale"]) {
+                pppsol_options.spp_vel_std_scale = config["pppsol"]["spp_vel_std_scale"].as<double>();
+            }
+            if (config["pppsol"]["spp_pos_std_max"]) {
+                auto vec = config["pppsol"]["spp_pos_std_max"].as<std::vector<double>>();
+                if (vec.size() != 3) {
+                    std::cout << "Failed when loading configuration. PPPSOL SPP position STD max needs 3 values!"
+                              << std::endl;
+                    return -1;
+                }
+                pppsol_options.spp_pos_std_max = Eigen::Vector3d(vec[0], vec[1], vec[2]);
+                pppsol_options.spp_pos_std_gate_enabled = true;
+            }
+            if (config["pppsol"]["spp_vel_std_min"]) {
+                pppsol_options.spp_vel_std_min = config["pppsol"]["spp_vel_std_min"].as<double>();
+                pppsol_options.spp_vel_std_gate_enabled = true;
+            }
+            if (config["pppsol"]["spp_recovery_confirm_epochs"]) {
+                pppsol_options.spp_recovery_confirm_epochs =
+                    config["pppsol"]["spp_recovery_confirm_epochs"].as<int>();
+            }
+        } catch (YAML::Exception &exception) {
+            std::cout << "Failed when loading configuration. Please check PPPSOL SPP quality options!" << std::endl;
+            return -1;
+        }
+        if ((pppsol_options.spp_pos_std_scale.array() <= 0.0).any() || pppsol_options.spp_vel_std_scale <= 0.0 ||
+            (pppsol_options.spp_pos_std_max.array() <= 0.0).any() || pppsol_options.spp_vel_std_min < 0.0 ||
+            pppsol_options.spp_recovery_confirm_epochs < 1) {
+            std::cout << "Failed when loading configuration. PPPSOL SPP quality values are out of range!" << std::endl;
+            return -1;
+        }
+    }
     if (gnss_loader_type == "pwjppp") {
         gnssfile = std::make_unique<PPPFileLoader>(gnsspath);
     } else if (gnss_loader_type == "pos") {
@@ -178,7 +227,7 @@ int main(int argc, char *argv[]) {
     } else if (gnss_loader_type == "ksxt") {
         gnssfile = std::make_unique<KsxtFileLoader>(gnsspath);
     } else if (gnss_loader_type == "pppsol") {
-        gnssfile = std::make_unique<PppsolFileLoader>(gnsspath);
+        gnssfile = std::make_unique<PppsolFileLoader>(gnsspath, 25, pppsol_options);
     } else {
         gnssfile = std::make_unique<GnssFileLoader>(gnsspath);
     }
@@ -353,6 +402,13 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
     }
     try {
         opt1.zuptopt.interval      = config["zupt"]["interval"].as<double>();
+        if (config["zupt"]["window_duration"]) {
+            opt1.zuptopt.window_duration = config["zupt"]["window_duration"].as<double>();
+            if (opt1.zuptopt.window_duration < opt1.zuptopt.interval) {
+                std::cout << "Failed when loading configuration. ZUPT window must cover its interval!" << std::endl;
+                return false;
+            }
+        }
         opt1.zuptopt.vel_threshold = config["zupt"]["vel_threshold"].as<double>();
         opt1.zuptopt.wib_threshold = config["zupt"]["wib_threshold"].as<double>();
         opt1.zuptopt.fb_threshold  = config["zupt"]["fb_threshold"].as<double>();
@@ -377,6 +433,30 @@ bool loadConfig(YAML::Node &config, GINSOptions &options) {
             }
             opt1.nhcopt.lateral_cov  = vec[0];
             opt1.nhcopt.vertical_cov = vec[1];
+            if (config["nhc"]["min_forward_speed"]) {
+                opt1.nhcopt.min_forward_speed = config["nhc"]["min_forward_speed"].as<double>();
+            }
+            if (config["nhc"]["max_lateral_speed"]) {
+                opt1.nhcopt.max_lateral_speed = config["nhc"]["max_lateral_speed"].as<double>();
+            }
+            if (config["nhc"]["max_vertical_speed"]) {
+                opt1.nhcopt.max_vertical_speed = config["nhc"]["max_vertical_speed"].as<double>();
+            }
+            if (config["nhc"]["update_interval"]) {
+                opt1.nhcopt.update_interval = config["nhc"]["update_interval"].as<double>();
+            }
+            if (config["nhc"]["gnss_std_trigger"]) {
+                opt1.nhcopt.gnss_std_trigger = config["nhc"]["gnss_std_trigger"].as<double>();
+            }
+            if (config["nhc"]["allow_single_axis"]) {
+                opt1.nhcopt.allow_single_axis = config["nhc"]["allow_single_axis"].as<bool>();
+            }
+            if (opt1.nhcopt.min_forward_speed < 0.0 || opt1.nhcopt.update_interval < 0.0 ||
+                opt1.nhcopt.gnss_std_trigger <= 0.0 || opt1.nhcopt.max_lateral_speed <= 0.0 ||
+                opt1.nhcopt.max_vertical_speed <= 0.0) {
+                std::cout << "Failed when loading configuration. Please check nhc speed thresholds!" << std::endl;
+                return false;
+            }
         } catch (YAML::Exception &exception) {
             std::cout << "Failed when loading configuration. Please check nhc options!" << std::endl;
             return false;

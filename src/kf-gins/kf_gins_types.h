@@ -79,14 +79,21 @@ typedef struct ImuNoise {
 
 struct ZUPTOptions {
     double interval;
+    double window_duration = 10.0;
     double vel_threshold;
     double wib_threshold;
     double fb_threshold;
     Eigen::Vector3d vel_std = Eigen::Vector3d(0.02, 0.02, 0.01);
 };
 struct NHCOptions {
-    double lateral_cov  = 0.0025;
-    double vertical_cov = 4.0;
+    double lateral_cov        = 0.0025;
+    double vertical_cov       = 4.0;
+    double min_forward_speed  = 0.65;
+    double max_lateral_speed  = 0.5;
+    double max_vertical_speed = 0.5;
+    double update_interval    = 0.0;
+    double gnss_std_trigger   = 4.0;
+    bool allow_single_axis    = false;
 };
 struct GIEngineOptions {
     bool estimate_scale;

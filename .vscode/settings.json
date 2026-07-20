@@ -23,7 +23,7 @@
             // "dataset/20260612/red_box.yaml",
             // "dataset/20260625/red_box.yaml",
             // "dataset/20260708/red_box.yaml",
-            "dataset/20260709/red_box.yaml",
+            "dataset/20260709/20260709-red-box-ppp.yaml",
         ],
         "cwd": "/mnt/hdd1/datasets/KF-GINS-dataset/"
     },

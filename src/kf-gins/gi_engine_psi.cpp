@@ -125,10 +125,17 @@ void GIEngine_PSI::insPropagation(IMU &imupre, IMU &imucur) {
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
     // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
-    if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
+    const bool nhc_due = engineopt_.nhcopt.update_interval <= 0.0 || last_nhc_time_ < 0.0 ||
+                         fabs(imucur_.time - last_nhc_time_) >= engineopt_.nhcopt.update_interval;
+    if (engineopt_.enable_nhc && nhc_due &&
+        (fabs(imucur_.time - updatetime) >= 1.0 ||
+         gnssdata_.std.norm() > engineopt_.nhcopt.gnss_std_trigger)) {
         // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
-        pvacur_.status |= 0b0010;
+        if (nv > 0) {
+            last_nhc_time_ = imucur_.time;
+            pvacur_.status |= 0b0010;
+        }
     }
 }
 void GIEngine_PSI::stateFeedback() {

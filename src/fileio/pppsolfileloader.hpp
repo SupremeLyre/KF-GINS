@@ -7,14 +7,26 @@
 #include <array>
 #include <cmath>
 #include <exception>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
 
+struct PppsolOptions {
+    Eigen::Vector3d spp_pos_std_scale = Eigen::Vector3d::Ones();
+    double spp_vel_std_scale          = 1.0;
+    Eigen::Vector3d spp_pos_std_max = Eigen::Vector3d::Constant(std::numeric_limits<double>::infinity());
+    double spp_vel_std_min          = 0.0;
+    int spp_recovery_confirm_epochs = 1;
+    bool spp_pos_std_gate_enabled   = false;
+    bool spp_vel_std_gate_enabled   = false;
+};
+
 class PppsolFileLoader : public IGnssFileLoader {
 public:
     PppsolFileLoader() = delete;
-    explicit PppsolFileLoader(const string &filename, int columns = 25) {
+    explicit PppsolFileLoader(const string &filename, int columns = 25, PppsolOptions options = {})
+        : options_(options) {
         invalidateGnss();
         open(filename, columns, FileLoader::TEXT);
     }
@@ -42,12 +54,21 @@ public:
         gnss_.vel  = {temper.vel[0], temper.vel[1], -temper.vel[2]};
         gnss_.vstd = {fabs(temper.vstd[0]), fabs(temper.vstd[1]), fabs(temper.vstd[2])};
 
-        if (temper.status >= 3 && temper.status <= 4 && temper.nsat > 5) {
+        if (temper.status == 3) {
+            gnss_.std = gnss_.std.cwiseProduct(options_.spp_pos_std_scale);
+            gnss_.vstd *= options_.spp_vel_std_scale;
+        }
+
+        if (temper.status == 4 && temper.nsat > 5) {
             gnss_.isPosValid = true;
             gnss_.isVelValid = true;
+            resetSppRecovery();
+        } else if (temper.status == 3 && temper.nsat > 5) {
+            updateSppValidity();
         } else {
             gnss_.isPosValid = false;
             gnss_.isVelValid = false;
+            resetSppRecovery();
         }
         gnss_.isvalid = gnss_.isPosValid || gnss_.isVelValid;
         return gnss_;
@@ -55,6 +76,44 @@ public:
 
 private:
     GNSS gnss_;
+    PppsolOptions options_;
+    double last_spp_epoch_ = -1.0;
+    int spp_pos_good_epochs_ = 0;
+    int spp_vel_good_epochs_ = 0;
+
+    void resetSppRecovery() {
+        last_spp_epoch_ = -1.0;
+        spp_pos_good_epochs_ = 0;
+        spp_vel_good_epochs_ = 0;
+    }
+
+    void updateSppValidity() {
+        double epoch = gnss_.week * 604800.0 + gnss_.time;
+        double dt = epoch - last_spp_epoch_;
+        if (last_spp_epoch_ < 0.0 || dt <= 0.0 || dt > 1.5) {
+            spp_pos_good_epochs_ = 0;
+            spp_vel_good_epochs_ = 0;
+        }
+        last_spp_epoch_ = epoch;
+
+        bool pos_quality_ok = true;
+        bool vel_quality_ok = true;
+        for (int i = 0; i < 3; ++i) {
+            if (options_.spp_pos_std_gate_enabled) {
+                pos_quality_ok = pos_quality_ok && std::isfinite(temper.std[i]) && temper.std[i] > 0.0 &&
+                                 temper.std[i] <= options_.spp_pos_std_max[i];
+            }
+            if (options_.spp_vel_std_gate_enabled) {
+                vel_quality_ok = vel_quality_ok && std::isfinite(temper.vstd[i]) &&
+                                 fabs(temper.vstd[i]) >= options_.spp_vel_std_min;
+            }
+        }
+
+        spp_pos_good_epochs_ = pos_quality_ok ? spp_pos_good_epochs_ + 1 : 0;
+        spp_vel_good_epochs_ = vel_quality_ok ? spp_vel_good_epochs_ + 1 : 0;
+        gnss_.isPosValid = spp_pos_good_epochs_ >= options_.spp_recovery_confirm_epochs;
+        gnss_.isVelValid = spp_vel_good_epochs_ >= options_.spp_recovery_confirm_epochs;
+    }
 
     void invalidateGnss() {
         gnss_.week = 0;
@@ -63,9 +122,9 @@ private:
         gnss_.std.setZero();
         gnss_.vel.setZero();
         gnss_.vstd.setZero();
-        gnss_.isvalid    = false;
-        gnss_.isPosValid = false;
-        gnss_.isVelValid = false;
+        gnss_.isvalid       = false;
+        gnss_.isPosValid    = false;
+        gnss_.isVelValid    = false;
     }
 
     std::vector<std::string> split(const std::string &s, char delimiter) {

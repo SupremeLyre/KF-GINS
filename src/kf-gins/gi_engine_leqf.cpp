@@ -179,9 +179,15 @@ void GIEngine_LEQF::insPropagation(IMU &imupre, IMU &imucur) {
         pvacur_.status |= 0b0100;
     }
 
-    if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
-        leqfNhc(pvacur_);
-        pvacur_.status |= 0b0010;
+    const bool nhc_due = engineopt_.nhcopt.update_interval <= 0.0 || last_nhc_time_ < 0.0 ||
+                         fabs(imucur_.time - last_nhc_time_) >= engineopt_.nhcopt.update_interval;
+    if (engineopt_.enable_nhc && nhc_due &&
+        (fabs(imucur_.time - updatetime) >= 1.0 ||
+         gnssdata_.std.norm() > engineopt_.nhcopt.gnss_std_trigger)) {
+        if (leqfNhc(pvacur_) > 0) {
+            last_nhc_time_ = imucur_.time;
+            pvacur_.status |= 0b0010;
+        }
     }
 }
 
@@ -322,9 +328,11 @@ int GIEngine_LEQF::leqfNhc(const PVA &pvacur) {
     R.setZero();
 
     int nv = 0;
-    if (fabs(v_v[0]) > 2) {
+    if (fabs(v_v[0]) > engineopt_.nhcopt.min_forward_speed) {
         for (int i = 1; i < 3; i++) {
-            if (fabs(v_v[i]) > 0.5) {
+            const double max_constrained_speed =
+                i == 1 ? engineopt_.nhcopt.max_lateral_speed : engineopt_.nhcopt.max_vertical_speed;
+            if (fabs(v_v[i]) > max_constrained_speed) {
                 continue;
             }
             if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
@@ -343,10 +351,14 @@ int GIEngine_LEQF::leqfNhc(const PVA &pvacur) {
         }
     }
 
-    if (nv > 1) {
+    if (nv > 0 && (engineopt_.nhcopt.allow_single_axis || nv > 1)) {
+        dz.conservativeResize(nv, 1);
+        H.conservativeResize(nv, Cov_.rows());
+        R.conservativeResize(nv, nv);
         EKFUpdate(dz, H, R, configuredFilterType(engineopt_.kf_nhc_type, KFFilterType::EKF),
                   engineopt_.kf_enable_adaptive);
         stateFeedback();
+        return nv;
     }
-    return nv;
+    return 0;
 }

@@ -372,10 +372,15 @@ void GIEngine::insPropagation(IMU &imupre, IMU &imucur) {
     // add constraint using NHC
     // || (imucur_.time > 188723 && imucur_.time < 188771)
     // if (engineopt_.enable_nhc && ((imucur_.time > 188431 && imucur_.time < 188540))) {
-    if (engineopt_.enable_nhc && (fabs(imucur_.time - updatetime) >= 1.0 || gnssdata_.std.norm() > 4.0)) {
+    const bool nhc_due = engineopt_.nhcopt.update_interval <= 0.0 || last_nhc_time_ < 0.0 ||
+                         fabs(imucur_.time - last_nhc_time_) >= engineopt_.nhcopt.update_interval;
+    if (engineopt_.enable_nhc && nhc_due &&
+        (fabs(imucur_.time - updatetime) >= 1.0 ||
+         gnssdata_.std.norm() > engineopt_.nhcopt.gnss_std_trigger)) {
         // if (engineopt_.enable_nhc) {
         int nv = nhc(pvacur_);
-        if (nv > 1) {
+        if (nv > 0) {
+            last_nhc_time_ = imucur_.time;
             pvacur_.status |= 0b0010;
         }
     }
@@ -730,10 +735,12 @@ int GIEngine::nhc(PVA pvacur_) {
     H.resize(2, Cov_.rows());
     H.setZero();
     int nv = 0;
-    if (fabs(vb[0]) > 0.65) {
+    if (fabs(vb[0]) > engineopt_.nhcopt.min_forward_speed) {
         for (int i = 1; i < 3; i++) {
 #if 1
-            if (fabs(vb[i]) > 0.5) {
+            const double max_constrained_speed =
+                i == 1 ? engineopt_.nhcopt.max_lateral_speed : engineopt_.nhcopt.max_vertical_speed;
+            if (fabs(vb[i]) > max_constrained_speed) {
                 continue;
             }
             if (fabs(imucur_.dtheta.norm()) > 30 * D2R) {
@@ -769,14 +776,18 @@ int GIEngine::nhc(PVA pvacur_) {
     //     R(0, 0) = pow(0.04, 2);
     //     R(1, 1) = pow(2, 2);
     // #endif
-    if (nv > 1) {
+    if (nv > 0 && (engineopt_.nhcopt.allow_single_axis || nv > 1)) {
+        dz.conservativeResize(nv, 1);
+        H.conservativeResize(nv, Cov_.rows());
+        R.conservativeResize(nv, nv);
         EKFUpdate(dz, H, R, configuredFilterType(engineopt_.kf_nhc_type, KFFilterType::EKF),
                   engineopt_.kf_enable_adaptive);
         // stateNHCFeedback();
         stateFeedback();
         // std::cout << std::format("{:10.3f} nhc=1\n", imucur_.time);
+        return nv;
     }
-    return nv;
+    return 0;
 }
 int GIEngine::zupt(PVA pvacur_) {
     Eigen::Vector3d vn = pvacur_.vel;
